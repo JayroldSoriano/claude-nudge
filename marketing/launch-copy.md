@@ -84,7 +84,7 @@ The part I had the most fun with is escalation. For questions and permissions Cl
 
 Privacy: the relay binds to 127.0.0.1 and rejects any web-page origin, the content script lives in a closed shadow root and never reads the page, and messages are clipped to 1200 chars before leaving the relay.
 
-It's MIT, about 1,500 lines, no build step. Setup is `npx claude-nudge setup` plus the extension. Repo: REPO_URL
+It's MIT, about 1,500 lines, no build step. Setup is `npx nudge-for-claude-code setup` plus the extension. Repo: REPO_URL
 
 Things I'd like to add: replying to questions from the bubble, a button that focuses the terminal, and grouping when several sessions run at once. Curious whether people would want a hosted relay that pushes to a phone for long-running tasks, or whether that's overkill.
 
@@ -119,7 +119,7 @@ How it works: Claude Code hooks -> curl -> 60-line Node relay on localhost -> We
 
 **Tweet 5:**
 Setup is one command plus the extension:
-npx claude-nudge setup
+npx nudge-for-claude-code setup
 
 Repo: REPO_URL
 Web Store: STORE_URL
@@ -145,7 +145,7 @@ If you ignore a question it escalates: wave -> walks to center -> grows and taps
 
 Everything's local. The relay only listens on 127.0.0.1 and rejects web-page origins. No account, no analytics.
 
-Setup: `npx claude-nudge setup` + install the extension. Repo: REPO_URL
+Setup: `npx nudge-for-claude-code setup` + install the extension. Repo: REPO_URL
 
 Happy to answer questions about the hooks setup; the Notification matcher for permission_prompt / idle_prompt took some trial and error.
 
@@ -216,7 +216,7 @@ Why this matters: the article ranks for "Claude Code hooks" searches long after 
 | 5-8s | Walks to bottom center, waves harder, hint "waiting 15s". | "Claude: hey." |
 | 8-11s | Grows, annoyed face, foot tapping, red bubble shakes. | "Claude: HEY." |
 | 11-13s | Alarm, hops along the bottom. | "Claude: !!!" |
-| 13-15s | Click "Got it", mascot leaves, cut to terminal, type y. End card with install command. | "npx claude-nudge setup" |
+| 13-15s | Click "Got it", mascot leaves, cut to terminal, type y. End card with install command. | "npx nudge-for-claude-code setup" |
 
 Export as GIF (for X, Reddit, GitHub README) and as 9:16 MP4 (YouTube Shorts, TikTok, Instagram Reels). The Shorts version is the same cut with a trending sound.
 

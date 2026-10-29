@@ -43,7 +43,7 @@ function scene({ w, h, event, timeline, caption, scroll = 0, endCard = false, bi
   <div class="bar"><div class="pill"></div><b>feed</b><div class="search"></div></div>
   <div class="feed">${cards}</div>
   ${caption ? `<div class="caption">${caption}</div>` : ''}
-  ${endCard ? `<div class="end"><img src="file://${path.join(ROOT, 'extension', 'icons', 'icon128.png')}" width="96" height="96" style="image-rendering:pixelated"><h1>Nudge for Claude Code</h1><code>npx claude-nudge setup</code><p>Free · open source · local only</p></div>` : ''}
+  ${endCard ? `<div class="end"><img src="file://${path.join(ROOT, 'extension', 'icons', 'icon128.png')}" width="96" height="96" style="image-rendering:pixelated"><h1>Nudge for Claude Code</h1><code>npx nudge-for-claude-code setup</code><p>Free · open source · local only</p></div>` : ''}
   <script>
     window.chrome = { runtime: { onMessage: { addListener(fn) { window.__l = fn; } }, sendMessage() { return Promise.resolve(); } } };
   </script>
@@ -58,10 +58,22 @@ function scene({ w, h, event, timeline, caption, scroll = 0, endCard = false, bi
 function shoot(html, out, w, h, budget) {
   const file = path.join(TMP, `${path.basename(out, '.png')}.html`);
   fs.writeFileSync(file, html);
-  execFileSync(CHROME, [
-    '--headless=new', '--disable-gpu', '--hide-scrollbars', '--allow-file-access-from-files', '--force-device-scale-factor=1',
-    `--window-size=${w},${h}`, `--virtual-time-budget=${budget}`, `--screenshot=${out}`, `file://${file}`,
-  ], { stdio: 'ignore' });
+  // Headless Chrome occasionally exits non-zero under load; retry a few times before giving up.
+  for (let attempt = 1; ; attempt++) {
+    try {
+      execFileSync(CHROME, [
+        '--headless=new', '--disable-gpu', '--hide-scrollbars', '--allow-file-access-from-files', '--force-device-scale-factor=1',
+        // Isolated profile: with the default profile, headless Chrome can write the screenshot and then never exit.
+        `--user-data-dir=${path.join(TMP, 'chrome-profile')}`, '--no-first-run', '--no-default-browser-check',
+        `--window-size=${w},${h}`, `--virtual-time-budget=${budget}`, `--screenshot=${out}`, `file://${file}`,
+      ], { stdio: 'ignore', timeout: 60000 });
+      if (fs.existsSync(out)) return;
+      throw new Error('no screenshot written');
+    } catch (err) {
+      if (attempt >= 4) throw err;
+      execFileSync('sleep', [String(attempt)]);
+    }
+  }
 }
 
 const QUESTION = {

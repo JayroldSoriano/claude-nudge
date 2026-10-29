@@ -63,7 +63,7 @@
     <h1>Claude is waiting.<br>Nudge makes sure you know.</h1>
     <p class="sub">A pixel mascot waves at you in Chrome when Claude Code has a question, needs permission, or is done. Ignore it and it gets annoyed.</p>
     <div class="demo"><img src="demo.gif" alt="Nudge escalating: corner wave, walk to center, annoyed, alarm" width="1280" height="800"></div>
-    <div class="install" id="install"><span>npx claude-nudge setup</span><button onclick="navigator.clipboard.writeText('npx claude-nudge setup');this.textContent='Copied'">Copy</button></div>
+    <div class="install" id="install"><span>npx nudge-for-claude-code setup</span><button onclick="navigator.clipboard.writeText('npx nudge-for-claude-code setup');this.textContent='Copied'">Copy</button></div>
     <div class="ctas">
       <a class="btn primary" href="STORE_URL" id="store">Add to Chrome</a>
       <a class="btn" href="https://github.com/JayroldSoriano/claude-nudge">View on GitHub</a>
@@ -97,8 +97,8 @@
 
   <section id="install">
     <h2>Install</h2>
-    <pre>npx claude-nudge setup</pre>
-    <p>That installs the hooks into <code>~/.claude/settings.json</code>, starts the relay (and keeps it running at login), and tells you where to load the extension. Then restart Claude Code and run <code>npx claude-nudge test</code>.</p>
+    <pre>npx nudge-for-claude-code setup</pre>
+    <p>That installs the hooks into <code>~/.claude/settings.json</code>, starts the relay (and keeps it running at login), and tells you where to load the extension. Then restart Claude Code and run <code>npx nudge-for-claude-code test</code>.</p>
     <p>Prefer to do it by hand? Everything is in the <a href="https://github.com/JayroldSoriano/claude-nudge#setup">README</a>.</p>
   </section>
 

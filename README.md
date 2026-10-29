@@ -26,7 +26,7 @@ Claude Code hook ──curl──▶ relay on 127.0.0.1 ──WebSocket──▶
 ## Install
 
 ```sh
-npx claude-nudge setup
+npx nudge-for-claude-code setup
 ```
 
 That copies the relay and hook into `~/.claude-nudge/`, adds the hooks to `~/.claude/settings.json`
@@ -38,10 +38,10 @@ and pick `~/.claude-nudge/extension` (Chrome Web Store listing coming). Restart 
 session and run:
 
 ```sh
-npx claude-nudge test            # a question
-npx claude-nudge test done       # done / permission / resolved
-npx claude-nudge status          # relay health + hook check
-npx claude-nudge uninstall       # removes everything it installed
+npx nudge-for-claude-code test            # a question
+npx nudge-for-claude-code test done       # done / permission / resolved
+npx nudge-for-claude-code status          # relay health + hook check
+npx nudge-for-claude-code uninstall       # removes everything it installed
 ```
 
 Requires Node 18+ and Chrome 116+.

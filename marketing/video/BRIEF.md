@@ -10,7 +10,7 @@ Two toolchains build in parallel: `remotion/` (React, product demos and short-fo
 - Product name: **Nudge for Claude Code**. Never "Claude Nudge" in any on-screen text.
 - Mascot name: **Nudge**. Never "Clawd". Never the Anthropic logo or wordmark.
 - "Works with Claude Code" may appear as a descriptor. The install command on screen is `npx claude-nudge setup`
-  (that is the real npm package name today; keep it verbatim).
+  (`claude-nudge` on npm is taken by an unrelated package, so the real package name is `nudge-for-claude-code`; keep it verbatim).
 - Placeholders in copy: `LANDING_URL`, `STORE_URL`, `REPO_URL`. On screen, show `nudge.dev` style placeholders as
   `LANDING_URL` literally, or omit URLs and keep the install command. Do not invent a domain.
 
