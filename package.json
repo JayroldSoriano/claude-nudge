@@ -33,8 +33,9 @@
   },
   "files": [
     "bin",
-    "relay",
-    "hooks",
+    "relay/server.js",
+    "relay/package.json",
+    "hooks/nudge-hook.sh",
     "extension",
     "README.md",
     "LICENSE"
