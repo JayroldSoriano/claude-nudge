@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Nudge for Claude Code</title>
 <meta name="description" content="A pixel mascot waves at you in Chrome when Claude Code has a question, needs permission, or is done. Ignore it and it gets annoyed. Free, open source, local only.">
 <meta property="og:title" content="Nudge for Claude Code">
@@ -10,121 +10,509 @@
 <meta property="og:image" content="https://jayroldsoriano.github.io/claude-nudge/assets/og.png">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="icon" href="assets/icon128.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
-  :root { --ink: #1f1d1a; --paper: #fffdf9; --sand: #f1e9df; --gold: #FFC53D; --gold-dark: #C98A12; --red: #b3261e; --muted: #7a6a5a; }
+  /* Tokens come from the product itself: the bubble's paper, ink border, gold body, red for level 2+. */
+  :root {
+    --paper: #FFFDF9; --ink: #1F1D1A; --sand: #F1E9DF; --line: #E4D9C9;
+    --gold: #FFC53D; --gold-dark: #C98A12; --red: #B3261E; --green: #2E8B57; --muted: #7A6A5A;
+    --bubble-bg: #FFFDF9; --bubble-ink: #1F1D1A; --chip: #FFF3EA;
+    --display: "Unbounded", "Avenir Next", "Helvetica Neue", sans-serif;
+    --body: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #171411; --ink: #F3EDE4; --sand: #241F1A; --line: #352D25; --muted: #A89885; --gold-dark: #E0A32A;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #171411; --ink: #F3EDE4; --sand: #241F1A; --line: #352D25; --muted: #A89885; --gold-dark: #E0A32A;
+    color-scheme: dark;
+  }
+
   * { box-sizing: border-box; }
-  body { margin: 0; font: 17px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif; color: var(--ink); background: var(--paper); }
-  a { color: #b8641a; }
-  .wrap { max-width: 960px; margin: 0 auto; padding: 0 20px; }
-  header { padding: 24px 0; display: flex; align-items: center; gap: 12px; }
-  header img { width: 32px; height: 32px; image-rendering: pixelated; }
-  header b { font-size: 18px; }
-  header nav { margin-left: auto; display: flex; gap: 18px; font-size: 14px; }
-  header nav a { color: var(--muted); text-decoration: none; }
-  .hero { padding: 36px 0 20px; text-align: center; }
-  h1 { font-size: clamp(34px, 6vw, 56px); line-height: 1.08; margin: 0 0 14px; letter-spacing: -.02em; }
-  .sub { font-size: 20px; color: var(--muted); max-width: 640px; margin: 0 auto 26px; }
-  .demo { border: 2px solid var(--ink); border-radius: 16px; box-shadow: 6px 6px 0 var(--ink); overflow: hidden; background: #fff; max-width: 860px; margin: 0 auto 28px; }
-  .demo img { display: block; width: 100%; height: auto; }
-  .install { display: inline-flex; align-items: center; gap: 10px; background: var(--ink); color: #fff; border-radius: 12px; padding: 12px 16px; font: 16px/1 ui-monospace, SFMono-Regular, Menlo, monospace; margin: 0 auto 14px; }
-  .install button { font: inherit; font-size: 13px; background: #fff; color: var(--ink); border: 0; border-radius: 8px; padding: 6px 10px; cursor: pointer; }
-  .ctas { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; margin: 10px 0 8px; }
-  .btn { display: inline-block; padding: 12px 18px; border: 2px solid var(--ink); border-radius: 12px; text-decoration: none; color: var(--ink); font-weight: 700; background: #fff; box-shadow: 4px 4px 0 var(--ink); }
-  .btn.primary { background: var(--gold); }
-  .btn.ghost { background: var(--sand); }
-  .badges { display: flex; gap: 8px; justify-content: center; margin: 18px 0 0; }
-  .badges img { height: 20px; }
-  .fine { font-size: 14px; color: var(--muted); margin-top: 10px; }
-  section { padding: 40px 0; }
-  h2 { font-size: 28px; margin: 0 0 18px; letter-spacing: -.01em; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
-  .card { border: 2px solid var(--ink); border-radius: 14px; padding: 16px; background: #fff; box-shadow: 4px 4px 0 var(--ink); }
-  .card b { display: block; margin-bottom: 6px; }
-  .card .lvl { display: inline-block; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: var(--sand); margin-bottom: 8px; }
-  .card.red .lvl { background: #fde8e6; color: var(--red); }
-  pre { background: var(--ink); color: #fff; padding: 16px; border-radius: 12px; overflow: auto; font-size: 14px; }
-  .flow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px; }
-  .flow span { background: var(--sand); padding: 6px 10px; border-radius: 8px; }
-  .flow i { color: var(--muted); font-style: normal; }
-  form { display: flex; gap: 8px; flex-wrap: wrap; }
-  input[type=email] { font: inherit; padding: 10px 12px; border: 2px solid var(--ink); border-radius: 10px; min-width: 260px; }
-  footer { padding: 30px 0 50px; font-size: 14px; color: var(--muted); border-top: 1px solid var(--sand); margin-top: 20px; }
-  @media (max-width: 600px) { header nav { display: none; } .sub { font-size: 17px; } }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--paper); color: var(--ink); font: 17px/1.6 var(--body); -webkit-font-smoothing: antialiased; }
+  a { color: inherit; text-decoration-thickness: 1.5px; text-underline-offset: 3px; }
+  code { font-family: var(--mono); font-size: .92em; background: var(--sand); padding: .1em .35em; border-radius: 4px; }
+  :focus-visible { outline: 3px solid var(--gold); outline-offset: 3px; }
+  button { font: inherit; cursor: pointer; }
+  .wrap { max-width: 880px; margin: 0 auto; padding-inline: 20px; }
+
+  header.top { display: flex; align-items: center; gap: 10px; padding-block: 22px; font-weight: 600; }
+  header.top img { width: 28px; height: 28px; image-rendering: pixelated; }
+  header.top nav { margin-left: auto; display: flex; gap: 20px; font-size: 14px; font-weight: 500; color: var(--muted); }
+  header.top nav a { text-decoration: none; }
+  header.top nav a:hover { color: var(--ink); }
+
+  .hero { padding-block: 56px 36px; max-width: 720px; }
+  .eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 0 0 18px; }
+  h1 { font-family: var(--display); font-size: clamp(30px, 5.4vw, 54px); line-height: 1.08; letter-spacing: -.01em; margin: 0 0 20px; text-wrap: balance; }
+  h1 em { font-style: normal; color: var(--gold-dark); }
+  .lede { font-size: 20px; max-width: 600px; margin: 0 0 26px; color: var(--ink); }
+  .lede b { font-weight: 600; }
+  .pointer { font-size: 15px; color: var(--muted); margin: 0 0 30px; display: flex; gap: 10px; align-items: baseline; }
+  .pointer button.link { background: none; border: 0; padding: 0; color: var(--gold-dark); text-decoration: underline; text-underline-offset: 3px; font-weight: 500; }
+
+  .install { display: inline-flex; align-items: center; gap: 12px; background: var(--ink); color: var(--paper); border-radius: 10px; padding: 12px 12px 12px 16px; font: 15px/1 var(--mono); max-width: 100%; }
+  .install span { overflow-x: auto; white-space: nowrap; }
+  .install span::before { content: "$ "; opacity: .5; }
+  .install button { font: 600 13px/1 var(--body); background: var(--paper); color: var(--ink); border: 0; border-radius: 7px; padding: 7px 11px; flex: none; }
+  .ctas { display: flex; flex-wrap: wrap; gap: 12px; margin: 18px 0 0; align-items: center; }
+  .btn { display: inline-block; padding: 11px 16px; border: 2px solid var(--ink); border-radius: 10px; text-decoration: none; color: var(--ink); font-weight: 600; background: var(--paper); box-shadow: 3px 3px 0 var(--ink); }
+  .btn.primary { background: var(--gold); color: #1F1D1A; }
+  .btn:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--ink); }
+  .fine { font-size: 14px; color: var(--muted); margin: 18px 0 0; }
+
+  section { padding-block: 44px; border-top: 1px solid var(--line); }
+  h2 { font-family: var(--display); font-size: clamp(20px, 2.6vw, 26px); line-height: 1.25; margin: 0 0 14px; letter-spacing: -.005em; }
+  .section-lede { max-width: 620px; margin: 0 0 24px; color: var(--muted); }
+  p { max-width: 640px; }
+
+  /* Escalation picker: four real states, selectable. The selected one is the live mascot's level. */
+  .levels { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 0 0 18px; }
+  .level { text-align: left; border: 2px solid var(--line); border-radius: 12px; padding: 14px 14px 12px; background: var(--paper); color: var(--ink); transition: border-color .15s, background .15s; }
+  .level:hover { border-color: var(--ink); }
+  .level[aria-pressed="true"] { border-color: var(--ink); background: var(--sand); box-shadow: 3px 3px 0 var(--ink); }
+  .level .t { font-family: var(--mono); font-size: 12px; color: var(--muted); display: block; margin-bottom: 6px; }
+  .level[data-level="2"][aria-pressed="true"] .t, .level[data-level="3"][aria-pressed="true"] .t { color: var(--red); font-weight: 500; }
+  .level b { display: block; font-weight: 600; margin-bottom: 4px; }
+  .level small { display: block; font-size: 13.5px; line-height: 1.45; color: var(--muted); }
+  .controls { display: flex; flex-wrap: wrap; gap: 14px 22px; align-items: center; font-size: 14.5px; color: var(--muted); }
+  .controls label { display: inline-flex; gap: 8px; align-items: center; cursor: pointer; }
+  .controls input { accent-color: var(--gold-dark); width: 16px; height: 16px; margin: 0; }
+  .controls button.link { background: none; border: 0; padding: 0; color: var(--gold-dark); text-decoration: underline; text-underline-offset: 3px; font-weight: 500; }
+
+  /* Events: a list, not cards. Each row can be previewed on the live mascot. */
+  .events { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
+  .events li { display: grid; grid-template-columns: 110px 1fr auto; gap: 16px; align-items: baseline; padding: 14px 0; border-bottom: 1px solid var(--line); }
+  .events .k { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+  .events .k i { width: 9px; height: 9px; border-radius: 50%; background: var(--gold); flex: none; }
+  .events .k i.permission { background: #D9A400; } .events .k i.done { background: var(--green); } .events .k i.idle { background: #888; }
+  .events .d { color: var(--muted); font-size: 15px; }
+  .events .d b { color: var(--ink); font-weight: 500; }
+  .events button { background: none; border: 1.5px solid var(--ink); border-radius: 8px; padding: 4px 10px; font-size: 13px; font-weight: 600; color: var(--ink); white-space: nowrap; }
+  .events button:hover { background: var(--sand); }
+
+  /* How it works: a real sequence, so the steps are numbered. */
+  .steps { counter-reset: s; list-style: none; margin: 0; padding: 0; display: grid; gap: 18px; max-width: 640px; }
+  .steps li { display: grid; grid-template-columns: 34px 1fr; gap: 14px; }
+  .steps li::before { counter-increment: s; content: counter(s); font-family: var(--mono); font-size: 13px; width: 28px; height: 28px; border: 1.5px solid var(--ink); border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; margin-top: 2px; }
+  .steps b { display: block; font-weight: 600; }
+  .steps span { color: var(--muted); font-size: 15.5px; }
+  .flow { font-family: var(--mono); font-size: 13.5px; color: var(--muted); margin: 22px 0 0; overflow-x: auto; white-space: nowrap; padding-bottom: 4px; }
+  .flow b { color: var(--ink); font-weight: 500; }
+
+  .privacy { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; max-width: 760px; }
+  .privacy div b { display: block; font-weight: 600; margin-bottom: 4px; }
+  .privacy div span { font-size: 15px; color: var(--muted); }
+
+  .install-steps { font-size: 16px; color: var(--muted); max-width: 640px; }
+  .install-steps b { color: var(--ink); font-weight: 500; }
+  pre { font-family: var(--mono); font-size: 14px; background: var(--ink); color: var(--paper); padding: 14px 16px; border-radius: 10px; overflow-x: auto; margin: 0 0 16px; }
+
+  form.notify { display: flex; gap: 10px; flex-wrap: wrap; align-items: stretch; margin-top: 18px; }
+  form.notify input { font: inherit; padding: 10px 14px; border: 2px solid var(--ink); border-radius: 10px; background: var(--paper); color: var(--ink); min-width: 0; flex: 1 1 240px; max-width: 360px; }
+  form.notify .btn { flex: none; }
+  .note { font-size: 14px; color: var(--muted); margin: 10px 0 0; min-height: 1.4em; }
+
+  footer { padding-block: 30px 60px; font-size: 14px; color: var(--muted); border-top: 1px solid var(--line); }
+  footer p { margin: 0 0 8px; }
+
+  @media (max-width: 760px) {
+    header.top nav { display: none; }
+    .levels { grid-template-columns: 1fr 1fr; }
+    .privacy { grid-template-columns: 1fr; }
+    .events li { grid-template-columns: 1fr auto; }
+    .events li .d { grid-column: 1 / -1; }
+    .hero { padding-block: 36px 28px; }
+    .lede { font-size: 18px; }
+  }
+  @media (max-width: 440px) { .levels { grid-template-columns: 1fr; } }
+
+  /* ====== The live mascot. Ported from the extension's content script; same sprite, same levels. ====== */
+  .nudge { position: fixed; z-index: 1000; bottom: 18px; right: 22px; font: 14px/1.45 var(--body); color: var(--bubble-ink); pointer-events: none; transition: transform .9s cubic-bezier(.4,0,.2,1); }
+  .nudge.hidden { display: none; }
+  .nudge .mover { display: flex; flex-direction: column; align-items: flex-end; gap: 10px; }
+  .nudge.lvl-1 .mover, .nudge.lvl-2 .mover, .nudge.lvl-3 .mover { align-items: center; }
+  .bubble { pointer-events: auto; position: relative; max-width: min(360px, calc(100vw - 44px)); min-width: 240px; background: var(--bubble-bg); color: var(--bubble-ink); border: 2px solid #1F1D1A; border-radius: 14px; box-shadow: 4px 4px 0 #1F1D1A; padding: 12px 14px 10px; transform-origin: bottom right; animation: pop .22s cubic-bezier(.2,1.4,.4,1) both; }
+  .bubble.shake { animation: shake .5s ease-in-out both; }
+  .nudge.lvl-3 .bubble { animation: pop .22s both, wiggle 1.2s ease-in-out infinite; }
+  .bubble::before, .bubble::after { content: ""; position: absolute; bottom: -12px; right: 34px; border-width: 12px 10px 0 0; border-style: solid; border-color: #1F1D1A transparent; }
+  .bubble::after { bottom: -8px; right: 35px; border-width: 9px 8px 0 0; border-color: var(--bubble-bg) transparent; }
+  .nudge.lvl-1 .bubble::before, .nudge.lvl-2 .bubble::before, .nudge.lvl-3 .bubble::before { right: auto; left: calc(50% - 10px); border-width: 12px 10px 0 10px; }
+  .nudge.lvl-1 .bubble::after, .nudge.lvl-2 .bubble::after, .nudge.lvl-3 .bubble::after { right: auto; left: calc(50% - 8px); border-width: 9px 8px 0 8px; }
+  .nudge.lvl-2 .bubble, .nudge.lvl-3 .bubble { border-color: var(--red); box-shadow: 4px 4px 0 var(--red); min-width: min(320px, calc(100vw - 44px)); }
+  .bubble .head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .bubble .dot { width: 9px; height: 9px; border-radius: 50%; background: #FFC53D; flex: none; }
+  .bubble .dot.done { background: #2E8B57; } .bubble .dot.permission { background: #D9A400; } .bubble .dot.idle { background: #888; }
+  .bubble .title { font-weight: 700; font-size: 13px; }
+  .bubble .project { margin-left: auto; font-size: 11px; padding: 2px 7px; border-radius: 999px; background: #F1E9DF; color: #5A4A3A; }
+  .bubble .msg { white-space: pre-wrap; word-break: break-word; }
+  .bubble .opts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .bubble .opt { font-size: 12px; padding: 3px 9px; border: 1.5px solid #1F1D1A; border-radius: 999px; background: var(--chip); }
+  .bubble .foot { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+  .bubble .hint { font-size: 11px; color: #7A6A5A; flex: 1; min-width: 0; font-variant-numeric: tabular-nums; }
+  .nudge.lvl-2 .hint, .nudge.lvl-3 .hint { color: var(--red); font-weight: 600; }
+  .bubble button { font-size: 12px; font-weight: 600; white-space: nowrap; flex: none; border: 1.5px solid #1F1D1A; border-radius: 8px; padding: 4px 10px; background: #fff; color: #1F1D1A; }
+  .bubble button.primary { background: #FFC53D; }
+  .bubble .timer { position: absolute; left: 10px; right: 10px; bottom: 4px; height: 3px; border-radius: 2px; background: #EADFD2; overflow: hidden; }
+  .bubble .timer > i { display: block; height: 100%; background: #FFC53D; transform-origin: left; animation: shrink var(--t) linear forwards; }
+  .scale { transition: transform .6s cubic-bezier(.2,1.2,.4,1); transform-origin: bottom center; }
+  .nudge.lvl-1 .scale { transform: scale(1.25); margin-top: 16px; }
+  .nudge.lvl-2 .scale { transform: scale(1.8); margin-top: 66px; }
+  .nudge.lvl-3 .scale { transform: scale(1.8); margin-top: 110px; animation: hop 1s cubic-bezier(.3,0,.2,1) infinite; }
+  .avatar { pointer-events: auto; cursor: pointer; width: 84px; height: 78px; animation: rise .35s cubic-bezier(.2,1.2,.4,1) both; }
+  .mascot { width: 100%; height: 100%; display: block; overflow: visible; }
+  .mascot .body-group { animation: bob 1.2s ease-in-out infinite; transform-origin: 6px 12px; }
+  .mascot .eyes { animation: blink 4s steps(1) infinite; transform-origin: 6px 7px; }
+  .mascot .brows, .mascot .frown, .mascot .arm-out { opacity: 0; }
+  .mascot .bulb { animation: glow 2s ease-in-out infinite; }
+  .nudge.lvl-1 .mascot .bulb rect { fill: #FFB020; }
+  .nudge.lvl-2 .mascot .bulb rect, .nudge.lvl-3 .mascot .bulb rect { fill: #FF4D4D; }
+  .nudge.lvl-2 .mascot .bulb { animation: blinkbulb .5s steps(1) infinite; }
+  .nudge.lvl-3 .mascot .bulb { animation: blinkbulb .2s steps(1) infinite; }
+  .avatar.waving .arm-up { animation: waveA .5s steps(1) infinite; }
+  .avatar.waving .arm-out { animation: waveB .5s steps(1) infinite; }
+  .nudge.lvl-1 .avatar.waving .arm-up, .nudge.lvl-1 .avatar.waving .arm-out { animation-duration: .3s; }
+  .nudge.lvl-2 .mascot .eyes, .nudge.lvl-3 .mascot .eyes { animation: none; transform: scaleY(.5); }
+  .nudge.lvl-2 .mascot .brows, .nudge.lvl-3 .mascot .brows, .nudge.lvl-2 .mascot .frown, .nudge.lvl-3 .mascot .frown { opacity: 1; }
+  .nudge.lvl-2 .mascot .smile, .nudge.lvl-3 .mascot .smile { opacity: 0; }
+  .nudge.lvl-2 .mascot .foot-l { animation: tap .4s steps(1) infinite; }
+  .nudge.lvl-3 .mascot .foot-l { animation: tap .25s steps(1) infinite; }
+  .nudge.lvl-3 .mascot .foot-r { animation: tap .25s steps(1) infinite .125s; }
+  .nudge.lvl-3 .mascot .body-group { animation: fume .3s ease-in-out infinite; }
+  .nudge.lvl-3 .mascot .arm-up { animation: waveA .2s steps(1) infinite; }
+  .nudge.lvl-3 .mascot .arm-out { animation: waveB .2s steps(1) infinite; }
+  .nudge.lvl-3 .mover { animation: roam 9s ease-in-out infinite; }
+  @keyframes pop { from { transform: scale(.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+  @keyframes rise { from { transform: translateY(40px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+  @keyframes bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-.35px); } }
+  @keyframes blink { 0%,92% { transform: scaleY(1); } 93%,97% { transform: scaleY(.15); } 98% { transform: scaleY(1); } }
+  @keyframes waveA { 0% { opacity: 1; } 50% { opacity: 0; } }
+  @keyframes waveB { 0% { opacity: 0; } 50% { opacity: 1; } }
+  @keyframes shrink { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+  @keyframes shake { 0%,100% { transform: translateX(0); } 20%,60% { transform: translateX(-7px); } 40%,80% { transform: translateX(7px); } }
+  @keyframes wiggle { 0%,100% { transform: rotate(-1.5deg); } 50% { transform: rotate(1.5deg); } }
+  @keyframes tap { 0% { transform: translateY(-1px); } 50% { transform: translateY(0); } }
+  @keyframes fume { 0%,100% { transform: translateX(-.3px); } 50% { transform: translateX(.3px); } }
+  @keyframes glow { 0%,100% { opacity: .55; } 50% { opacity: 1; } }
+  @keyframes blinkbulb { 0% { opacity: 1; } 50% { opacity: .15; } }
+  @keyframes hop { 0%,100% { transform: scale(1.8) translateY(0); } 30% { transform: scale(1.8) translateY(-26px); } 45% { transform: scale(1.8) translateY(0); } 60% { transform: scale(1.8) translateY(-10px); } 70% { transform: scale(1.8) translateY(0); } }
+  @keyframes roam { 0%,100% { transform: translateX(0); } 45%,55% { transform: translateX(var(--roam)); } }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .nudge, .bubble, .avatar, .scale, .mover, .mascot * { animation: none !important; transition: none !important; }
+  }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <header>
-    <img src="assets/icon128.png" alt=""><b>Nudge for Claude Code</b>
-    <nav><a href="#how">How it works</a><a href="#escalation">Escalation</a><a href="#install">Install</a><a href="https://github.com/JayroldSoriano/claude-nudge">GitHub</a><a href="privacy.html">Privacy</a></nav>
+  <header class="top">
+    <img src="assets/icon128.png" alt=""> Nudge for Claude Code
+    <nav>
+      <a href="#escalation">Escalation</a>
+      <a href="#how">How it works</a>
+      <a href="#install">Install</a>
+      <a href="https://github.com/JayroldSoriano/claude-nudge">GitHub</a>
+    </nav>
   </header>
 
-  <div class="hero">
-    <h1>Claude is waiting.<br>Nudge makes sure you know.</h1>
-    <p class="sub">A pixel mascot waves at you in Chrome when Claude Code has a question, needs permission, or is done. Ignore it and it gets annoyed.</p>
-    <div class="demo"><img src="demo.gif" alt="Nudge escalating: corner wave, walk to center, annoyed, alarm" width="1280" height="800"></div>
-    <div class="install" id="install"><span>npx nudge-for-claude-code setup</span><button onclick="navigator.clipboard.writeText('npx nudge-for-claude-code setup');this.textContent='Copied'">Copy</button></div>
+  <section class="hero" style="border-top:0">
+    <p class="eyebrow">A Chrome extension for Claude Code</p>
+    <h1>Claude is waiting on you. <em>Nudge</em> makes sure you notice.</h1>
+    <p class="lede">You start a task, tab over to the browser for a second, and come back ten minutes later to find Claude sitting on a question. Nudge puts a small pixel mascot on whatever tab you're reading, with the question in a bubble. <b>Ignore it and it gets annoyed.</b></p>
+    <p class="pointer"><span id="pointer-text">That's Nudge in the corner. This page just pretended Claude asked you something. Keep reading and see what happens.</span><button class="link" id="bring-back" hidden>Bring Nudge back</button></p>
+    <div class="install" id="install-cmd"><span>npx nudge-for-claude-code setup</span><button type="button" id="copy-cmd">Copy</button></div>
     <div class="ctas">
-      <a class="btn primary" href="STORE_URL" id="store">Add to Chrome</a>
-      <a class="btn" href="https://github.com/JayroldSoriano/claude-nudge">View on GitHub</a>
-      <a class="btn ghost" href="#pro">Pro: notify me</a>
+      <a class="btn primary" id="store-btn" href="STORE_URL">Add to Chrome</a>
+      <a class="btn" href="https://github.com/JayroldSoriano/claude-nudge">Source on GitHub</a>
     </div>
-    <div class="badges">
-      <a href="https://github.com/JayroldSoriano/claude-nudge"><img src="https://img.shields.io/github/stars/JayroldSoriano/claude-nudge?style=flat-square&label=stars&color=FFC53D" alt="GitHub stars"></a>
-      <img src="https://img.shields.io/badge/license-MIT-1f1d1a?style=flat-square" alt="MIT">
-      <img src="https://img.shields.io/badge/local%20only-no%20servers-1f1d1a?style=flat-square" alt="Local only">
-    </div>
-    <p class="fine">Free and open source. Requires Node 18+ and Chrome 116+. Nothing leaves your machine.</p>
-  </div>
-
-  <section id="how">
-    <h2>How it works</h2>
-    <div class="flow"><span>Claude Code hook</span><i>→</i><span>curl</span><i>→</i><span>relay on 127.0.0.1</span><i>→</i><span>WebSocket</span><i>→</i><span>extension</span><i>→</i><span>mascot on your active tab</span></div>
-    <p>Claude Code's <code>Stop</code>, <code>Notification</code>, and <code>AskUserQuestion</code> hooks post to a zero-dependency Node relay on localhost. The relay pushes to the extension, which draws Nudge on whatever tab you're looking at, with the actual question and its options in a speech bubble. The mascot follows you across tabs and windows. Answering in the terminal dismisses it everywhere.</p>
-    <p>The relay binds to <code>127.0.0.1</code> and rejects any web-page origin. The content script lives in a closed shadow root and never reads the page. No accounts, no analytics, no servers.</p>
+    <p class="fine">Free and open source. Nothing leaves your machine. Needs Node 18 and Chrome 116 or newer.</p>
   </section>
 
   <section id="escalation">
     <h2>The longer you ignore it, the harder it tries</h2>
-    <div class="grid">
-      <div class="card"><span class="lvl">Level 0 · 0s</span><b>Corner wave</b>Pops into the corner with the question. Polite.</div>
-      <div class="card"><span class="lvl">Level 1 · 15s</span><b>Walks to center</b>Waves harder. The hint counts how long Claude has been waiting.</div>
-      <div class="card red"><span class="lvl">Level 2 · 30s</span><b>Grows, gets annoyed</b>1.8x bigger, flat eyes, foot tapping. The bubble turns red and shakes.</div>
-      <div class="card red"><span class="lvl">Level 3 · 60s</span><b>Alarm, roams</b>A short alarm, then it hops along the bottom of the page.</div>
+    <p class="section-lede">Questions and permissions block Claude until you answer, so those escalate. Pick a level to see it live. On this page the clock is sped up; the real timings are shown.</p>
+    <div class="levels" role="group" aria-label="Escalation level">
+      <button class="level" data-level="0" aria-pressed="true"><span class="t">Level 0 · right away</span><b>Corner wave</b><small>Shows up in the corner with the question and its options. Polite.</small></button>
+      <button class="level" data-level="1" aria-pressed="false"><span class="t">Level 1 · after 15s</span><b>Walks to center</b><small>Waves harder. The bubble starts counting how long Claude has waited.</small></button>
+      <button class="level" data-level="2" aria-pressed="false"><span class="t">Level 2 · after 30s</span><b>Grows, gets annoyed</b><small>1.8× bigger, flat eyes, foot tapping. The bubble turns red and shakes.</small></button>
+      <button class="level" data-level="3" aria-pressed="false"><span class="t">Level 3 · after 60s</span><b>Alarm, roams</b><small>A short alarm, then it hops along the bottom of the page until you answer.</small></button>
     </div>
-    <p class="fine">Only questions and permissions escalate, because that's when Claude is blocked. "Done" nudges stay quiet and auto-dismiss. The clock runs only while Chrome is focused. Pick Gentle or Full Chaos, or turn it off. There's a snooze. We're not monsters.</p>
+    <div class="controls">
+      <label><input type="checkbox" id="sound"> Sound on this page</label>
+      <label><input type="checkbox" id="autoesc" checked> Escalate automatically</label>
+      <span>Clock runs only while this tab is visible, same as the extension and the terminal.</span>
+    </div>
+    <p class="fine">"Done" nudges never escalate; they auto-dismiss after 20 seconds. Pick Gentle (levels 1 and 2), Full Chaos (adds the alarm), or Off. From level 1 there's a Snooze button.</p>
+  </section>
+
+  <section id="events">
+    <h2>What shows up, and when</h2>
+    <ul class="events">
+      <li><span class="k"><i></i>Question</span><span class="d">Claude asked you something. <b>The question and its option labels</b> are in the bubble, so you can tell whether it's worth tabbing back. Stays until you act.</span><button type="button" data-kind="question">Show me</button></li>
+      <li><span class="k"><i class="permission"></i>Permission</span><span class="d">Claude wants to run a tool or command. <b>The permission message</b> is in the bubble. Stays until you act.</span><button type="button" data-kind="permission">Show me</button></li>
+      <li><span class="k"><i class="done"></i>Done</span><span class="d">Claude finished. <b>Its last message</b> is in the bubble, expandable. Goes away on its own.</span><button type="button" data-kind="done">Show me</button></li>
+      <li><span class="k"><i class="idle"></i>Idle</span><span class="d">Claude has been waiting a minute with nothing to do. Off by default.</span><button type="button" data-kind="idle">Show me</button></li>
+    </ul>
+    <p class="fine">Nudge follows you: switch tabs or windows and it reappears there with the same countdown. Dismiss it once and it's gone everywhere. Answer in the terminal and it's gone too.</p>
+  </section>
+
+  <section id="how">
+    <h2>How it works</h2>
+    <ol class="steps">
+      <li><div><b>Claude Code fires a hook</b><span>The Stop, Notification, and AskUserQuestion hooks run a two-line shell script that forwards the event with curl. It never blocks Claude.</span></div></li>
+      <li><div><b>A relay on your machine receives it</b><span>A zero-dependency Node server bound to 127.0.0.1. It accepts connections from the extension only and rejects any web page.</span></div></li>
+      <li><div><b>The extension draws Nudge on your active tab</b><span>The sprite and bubble live in a closed shadow root, so page styles can't touch them and the script never reads the page.</span></div></li>
+    </ol>
+    <p class="flow"><b>hook</b> → curl → <b>relay on 127.0.0.1</b> → WebSocket → <b>extension</b> → Nudge on the tab you're looking at</p>
+  </section>
+
+  <section id="privacy">
+    <h2>Private by construction</h2>
+    <div class="privacy">
+      <div><b>No servers</b><span>The relay runs on localhost. There is no account and no cloud.</span></div>
+      <div><b>No page access</b><span>The content script only draws the mascot. It never reads what's on the tab.</span></div>
+      <div><b>No analytics</b><span>Messages are clipped to 1,200 characters before they leave the relay. Nothing is logged anywhere else.</span></div>
+    </div>
   </section>
 
   <section id="install">
-    <h2>Install</h2>
+    <h2>Install in two steps</h2>
     <pre>npx nudge-for-claude-code setup</pre>
-    <p>That installs the hooks into <code>~/.claude/settings.json</code>, starts the relay (and keeps it running at login), and tells you where to load the extension. Then restart Claude Code and run <code>npx nudge-for-claude-code test</code>.</p>
-    <p>Prefer to do it by hand? Everything is in the <a href="https://github.com/JayroldSoriano/claude-nudge#setup">README</a>.</p>
+    <p class="install-steps">That adds the hooks to <b>~/.claude/settings.json</b> (with a backup next to it), starts the relay, and keeps it running at login. Then add the extension from the Chrome Web Store, or load the unpacked folder it prints. Restart any running Claude Code session and run <code>npx nudge-for-claude-code test</code> to see your first nudge.</p>
+    <div class="ctas">
+      <a class="btn primary" id="store-btn-2" href="STORE_URL">Add to Chrome</a>
+      <a class="btn" href="https://github.com/JayroldSoriano/claude-nudge#install">Manual setup</a>
+    </div>
   </section>
 
   <section id="pro">
-    <h2>Pro (coming)</h2>
-    <p>Reply to questions and approve permissions from the bubble. A button that jumps back to your terminal. Multi-session view. Mascot and sound packs. "Claude waited on you 47 minutes this week."</p>
-    <!-- Replace the action with your form endpoint (Formspree, Buttondown, etc.). -->
-    <form action="FORM_ENDPOINT" method="post">
-      <input type="email" name="email" placeholder="you@example.com" required>
-      <button class="btn primary" type="submit">Notify me</button>
+    <h2>Coming next</h2>
+    <p>Answer questions and approve permissions from the bubble. A button that jumps back to your terminal. One view when several sessions want you. Mascot and sound packs. A weekly "Claude waited on you 47 minutes" that you'll want to screenshot.</p>
+    <form class="notify" id="notify" data-endpoint="FORM_ENDPOINT" novalidate>
+      <label for="email" class="eyebrow" style="flex-basis:100%;margin:0">Get one email when it ships</label>
+      <input type="email" id="email" name="email" placeholder="you@example.com" required autocomplete="email">
+      <button class="btn" type="submit">Notify me</button>
     </form>
+    <p class="note" id="note" aria-live="polite"></p>
   </section>
 
   <footer>
-    Made by <a href="https://github.com/JayroldSoriano">Jayrold Soriano</a> · <a href="https://github.com/sponsors/JayroldSoriano">Sponsor</a> · <a href="privacy.html">Privacy</a> · <a href="https://github.com/JayroldSoriano/claude-nudge/issues">Issues</a><br>
-    Independent project. Not affiliated with or endorsed by Anthropic. "Claude" and "Claude Code" are trademarks of Anthropic.
+    <p>Made by <a href="https://github.com/JayroldSoriano">Jayrold Soriano</a> · <a href="https://github.com/sponsors/JayroldSoriano">Sponsor</a> · <a href="privacy.html">Privacy</a> · <a href="https://github.com/JayroldSoriano/claude-nudge/issues">Issues</a></p>
+    <p>Independent project, not affiliated with or endorsed by Anthropic. "Claude" and "Claude Code" are trademarks of Anthropic.</p>
   </footer>
 </div>
-<!-- Analytics: uncomment once you have a Plausible or Umami site.
-<script defer data-domain="jayroldsoriano.github.io" src="https://plausible.io/js/script.js"></script> -->
+
+<!-- The live mascot -->
+<div class="nudge hidden" id="nudge" aria-live="polite">
+  <div class="mover" id="mover">
+    <div class="bubble-slot" id="slot"></div>
+    <div class="scale"><div class="avatar" id="avatar"></div></div>
+  </div>
+</div>
+
 <script>
-  // Until the Web Store listing is live, the store button points at the README.
-  if (document.getElementById('store').getAttribute('href') === 'STORE_URL') {
-    document.getElementById('store').href = 'https://github.com/JayroldSoriano/claude-nudge#setup';
-    document.getElementById('store').textContent = 'Install (unpacked)';
+(() => {
+  // ---- Sprite: same 14x13 pixel grid as the extension. ----
+  const BODY = '#FFC53D', DARK = '#C98A12', INK = '#2B2118', GLINT = '#FFFFFF', BULB = '#7ED957';
+  const PX = {
+    body: [], bulb: [[5,0],[6,0],[7,0]], stalk: [[6,1],[6,2]],
+    eyes: [[3,6],[4,6],[3,7],[4,7],[8,6],[9,6],[8,7],[9,7]], glint: [[3,6],[8,6]],
+    smile: [[4,9],[5,10],[6,10],[7,10],[8,9]], frown: [[4,10],[5,9],[6,9],[7,9],[8,10]],
+    browL: [[3,4],[4,5]], browR: [[9,4],[8,5]], footL: [[3,12],[4,12]], footR: [[8,12],[9,12]],
+    armLeft: [[0,7],[0,8]], armUp: [[12,4],[12,5],[12,6],[12,7]], armOut: [[12,7],[12,6],[13,5],[13,4]],
+  };
+  for (let y = 3; y <= 11; y++) for (let x = 1; x <= 11; x++) {
+    if (!((y === 3 || y === 11) && (x === 1 || x === 11))) PX.body.push([x, y]);
   }
+  const rects = (pts, fill) => pts.map(([x, y]) => `<rect x="${x}" y="${y}" width="1" height="1" fill="${fill}"/>`).join('');
+  const bottom = [2,3,4,5,6,7,8,9,10].map((x) => [x, 11]);
+  document.getElementById('avatar').innerHTML = `
+    <svg class="mascot" viewBox="0 0 14 13" shape-rendering="crispEdges" aria-hidden="true">
+      <g class="body-group">${rects(PX.stalk, DARK)}<g class="bulb">${rects(PX.bulb, BULB)}</g>${rects(PX.body, BODY)}${rects(bottom, DARK)}${rects(PX.armLeft, BODY)}
+        <g class="eyes">${rects(PX.eyes, INK)}${rects(PX.glint, GLINT)}</g><g class="brows">${rects(PX.browL, INK)}${rects(PX.browR, INK)}</g>
+        <g class="smile">${rects(PX.smile, INK)}</g><g class="frown">${rects(PX.frown, INK)}</g></g>
+      <g class="foot foot-l">${rects(PX.footL, DARK)}</g><g class="foot foot-r">${rects(PX.footR, DARK)}</g>
+      <g class="arm arm-up">${rects(PX.armUp, BODY)}</g><g class="arm arm-out">${rects(PX.armOut, BODY)}</g>
+    </svg>`;
+
+  // ---- Demo events. Real timings are 15/30/60s; the page uses 10/20/35s. ----
+  const EVENTS = {
+    question:   { kind: 'question', title: 'Claude has a question', project: 'claude-nudge', message: 'The migration touches the users table. Run it against prod now, or do a dry run first?', options: ['Run on prod', 'Dry run first', 'Skip for now'] },
+    permission: { kind: 'permission', title: 'Claude needs permission', project: 'claude-nudge', message: 'Bash: npm publish --access public' },
+    done:       { kind: 'done', title: 'Claude is done', project: 'claude-nudge', message: 'Renamed the package, added the MIT license, and wrote the installer. All 14 tests pass. Ready to push when you are.', auto: 20 },
+    idle:       { kind: 'idle', title: 'Claude is waiting', project: 'claude-nudge', message: 'No task running. Claude has been idle for a minute.', auto: 20 },
+  };
+  const STEPS = [0, 10, 20, 35]; // seconds on this page
+  const fmt = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  const HINTS = {
+    0: (s) => s < 3 ? 'Claude is blocked until you answer.' : `Waiting ${fmt(s)}. Nudge is still being polite.`,
+    1: (s) => `You've kept Claude waiting ${fmt(s)}.`,
+    2: (s) => `${fmt(s)}. Nudge is not amused.`,
+    3: (s) => `${fmt(s)}. Seriously.`,
+    done: () => 'Esc or click to dismiss.',
+    idle: () => 'Off by default. Turn it on in settings.',
+  };
+
+  const root = document.getElementById('nudge'), mover = document.getElementById('mover'), slot = document.getElementById('slot'), avatar = document.getElementById('avatar');
+  const levelBtns = [...document.querySelectorAll('.level')];
+  const soundBox = document.getElementById('sound'), autoBox = document.getElementById('autoesc');
+  const bringBack = document.getElementById('bring-back'), pointer = document.getElementById('pointer-text');
+  let current = null, level = 0, waited = 0, tick = null, waveTimer = null, dismissTimer = null, snoozeTimer = null, manual = false;
+
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+  function show(ev) {
+    clearTimeout(snoozeTimer); clearTimeout(dismissTimer); clearInterval(tick);
+    current = ev; waited = 0; level = -1; manual = false;
+    const opts = (ev.options || []).map((o) => `<span class="opt">${esc(o)}</span>`).join('');
+    slot.innerHTML = `
+      <div class="bubble" role="status">
+        <div class="head"><span class="dot ${ev.kind}"></span><span class="title">${esc(ev.title)}</span><span class="project">${esc(ev.project)}</span></div>
+        <div class="msg">${esc(ev.message)}</div>
+        ${opts ? `<div class="opts">${opts}</div>` : ''}
+        <div class="foot"><span class="hint"></span><button type="button" class="snooze" hidden>Snooze 5m</button><button type="button" class="primary dismiss">Got it</button></div>
+        ${ev.auto ? `<div class="timer" style="--t:${ev.auto}s"><i></i></div>` : ''}
+      </div>`;
+    slot.querySelector('.dismiss').addEventListener('click', () => dismiss());
+    slot.querySelector('.snooze').addEventListener('click', snooze);
+    root.classList.remove('hidden');
+    bringBack.hidden = true;
+    setLevel(0);
+    wave();
+    if (soundBox.checked) blip(ev.kind);
+    if (ev.auto) dismissTimer = setTimeout(() => dismiss(), ev.auto * 1000);
+    tick = setInterval(() => {
+      if (document.visibilityState !== 'visible') return; // the clock only runs while you can see it
+      waited++;
+      updateHint();
+      if (autoBox.checked && !manual && escalates()) {
+        const next = STEPS.filter((t) => waited >= t).length - 1;
+        if (next > level) setLevel(next);
+      }
+    }, 1000);
+  }
+  const escalates = () => current && (current.kind === 'question' || current.kind === 'permission');
+
+  function updateHint() {
+    const h = slot.querySelector('.hint');
+    if (!h || !current) return;
+    h.textContent = escalates() ? HINTS[level](waited) : HINTS[current.kind]();
+  }
+
+  function setLevel(next) {
+    if (!current) return;
+    if (!escalates()) next = 0;
+    const prev = level;
+    level = next;
+    root.classList.remove('lvl-1', 'lvl-2', 'lvl-3');
+    if (next > 0) root.classList.add(`lvl-${next}`);
+    slot.querySelector('.snooze').hidden = next === 0;
+    levelBtns.forEach((b) => b.setAttribute('aria-pressed', String(Number(b.dataset.level) === next)));
+    updateHint();
+    place();
+    if (next >= 1 && prev < next) wave(next === 1 ? 6000 : 3500);
+    if (next === 2 && prev !== 2) { const b = slot.querySelector('.bubble'); b.classList.add('shake'); setTimeout(() => b.classList.remove('shake'), 600); }
+    if (next === 3 && prev !== 3 && soundBox.checked) alarm();
+    if (next === 3 && prev !== 3) pointer.textContent = 'This is level 3. In Gentle mode it stops at level 2. Click "Got it" to make it stop.';
+  }
+
+  function place() {
+    if (level === 0) { root.style.transform = ''; mover.style.removeProperty('--roam'); return; }
+    const w = root.getBoundingClientRect().width || 360;
+    const toCenter = Math.max(0, window.innerWidth / 2 - 22 - w / 2);
+    root.style.transform = `translateX(${-toCenter}px)`;
+    mover.style.setProperty('--roam', `${-Math.max(0, toCenter - 10)}px`);
+  }
+  window.addEventListener('resize', () => { if (current && level > 0) place(); });
+
+  function wave(ms = 3500) {
+    avatar.classList.remove('waving'); void avatar.offsetWidth; avatar.classList.add('waving');
+    clearTimeout(waveTimer); waveTimer = setTimeout(() => avatar.classList.remove('waving'), ms);
+  }
+
+  function dismiss(afterText = 'Dismissed. In real use, answering in the terminal does the same thing on every tab.') {
+    clearInterval(tick); clearTimeout(dismissTimer); clearTimeout(waveTimer);
+    root.classList.add('hidden'); root.classList.remove('lvl-1', 'lvl-2', 'lvl-3'); root.style.transform = '';
+    slot.innerHTML = ''; current = null; level = 0;
+    levelBtns.forEach((b) => b.setAttribute('aria-pressed', 'false'));
+    pointer.textContent = afterText;
+    bringBack.hidden = false;
+  }
+
+  function snooze() {
+    dismiss('Snoozed. Real snooze is 5 minutes; here it comes back in 8 seconds, calm, at level 0.');
+    snoozeTimer = setTimeout(() => show(EVENTS.question), 8000);
+  }
+
+  // ---- Sound: short square-wave tones, same as the extension. Only after the visitor opts in. ----
+  function tones(notes, gain, step, len) {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      notes.forEach((f, i) => {
+        const o = ctx.createOscillator(), g = ctx.createGain(), t = ctx.currentTime + i * step;
+        o.type = 'square'; o.frequency.value = f;
+        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(gain, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + len);
+        o.connect(g).connect(ctx.destination); o.start(t); o.stop(t + len + 0.01);
+      });
+      setTimeout(() => ctx.close(), (notes.length * step + len) * 1000 + 200);
+    } catch (_) {}
+  }
+  const blip = (kind) => tones(kind === 'done' ? [660, 880] : [523, 659, 784], 0.05, 0.09, 0.08);
+  const alarm = () => tones([880, 660, 880, 660, 1046, 784, 1046], 0.09, 0.13, 0.11);
+
+  // ---- Page controls ----
+  levelBtns.forEach((b) => b.addEventListener('click', () => {
+    const n = Number(b.dataset.level);
+    if (!current || !escalates()) show(EVENTS.question);
+    manual = true; // you picked, so the clock stops moving it
+    waited = Math.max(waited, STEPS[n]);
+    setLevel(n);
+  }));
+  document.querySelectorAll('.events button[data-kind]').forEach((b) => b.addEventListener('click', () => {
+    show(EVENTS[b.dataset.kind]);
+    pointer.textContent = `That's a "${b.dataset.kind}" nudge. ${b.dataset.kind === 'done' || b.dataset.kind === 'idle' ? 'It goes away by itself.' : 'It stays until you act.'}`;
+  }));
+  bringBack.addEventListener('click', () => { show(EVENTS.question); pointer.textContent = "Back at level 0. Ignore it again and it'll escalate."; });
+  avatar.addEventListener('click', () => { if (current) dismiss(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && current) dismiss(); });
+  soundBox.addEventListener('change', () => { if (soundBox.checked) blip('question'); });
+
+  const cmd = 'npx nudge-for-claude-code setup';
+  document.getElementById('copy-cmd').addEventListener('click', (e) => {
+    const btn = e.currentTarget;
+    const ok = () => { btn.textContent = 'Copied'; setTimeout(() => (btn.textContent = 'Copy'), 1600); };
+    (navigator.clipboard && navigator.clipboard.writeText) ? navigator.clipboard.writeText(cmd).then(ok, () => select()) : select();
+    function select() { const r = document.createRange(); r.selectNodeContents(btn.previousElementSibling); const s = getSelection(); s.removeAllRanges(); s.addRange(r); }
+  });
+
+  // Store buttons point at the README until the Web Store listing is live.
+  document.querySelectorAll('a[href="STORE_URL"]').forEach((a) => { a.href = 'https://github.com/JayroldSoriano/claude-nudge#install'; a.textContent = 'Install the extension'; });
+
+  const form = document.getElementById('notify'), note = document.getElementById('note');
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = form.email.value.trim();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { note.textContent = 'That email address doesn\'t look complete.'; form.email.focus(); return; }
+    const endpoint = form.dataset.endpoint;
+    if (!endpoint || endpoint === 'FORM_ENDPOINT') { note.textContent = 'The list isn\'t connected yet. Star the repo on GitHub to follow along.'; return; }
+    try {
+      const r = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ email }) });
+      note.textContent = r.ok ? 'Added. One email when it ships, nothing else.' : 'Couldn\'t add you. Try again in a minute.';
+      if (r.ok) form.reset();
+    } catch (_) { note.textContent = 'Couldn\'t reach the list. Try again in a minute.'; }
+  });
+
+  // ---- Open with Nudge already on screen. A short beat so the first frame is the headline, then the question. ----
+  setTimeout(() => show(EVENTS.question), 900);
+})();
 </script>
 </body>
 </html>
