@@ -105,7 +105,6 @@ Full policy: [privacy.html](https://nudge-for-claude-code.vercel.app/privacy).
 | `docs/` | Landing page and privacy policy (GitHub Pages). |
 | `scripts/make-assets.js` | Renders the demo GIF/MP4, Web Store screenshots, and promo tile with headless Chrome and ffmpeg. |
 | `scripts/pack-extension.sh` | Zips the extension for Web Store upload into `dist/`. |
-| `marketing/` | Launch copy and plan. |
 
 ## Development
 
