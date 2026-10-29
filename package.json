@@ -1,6 +1,6 @@
 {
   "name": "nudge-for-claude-code",
-  "version": "0.2.0",
+  "version": "1.0.0",
   "private": true,
   "description": "Nudge for Claude Code: a pixel mascot waves in Chrome when Claude Code has a question, needs permission, or is done.",
   "scripts": {

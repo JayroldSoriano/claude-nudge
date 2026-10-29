@@ -312,5 +312,9 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === 'claude-nudge-reconnect') connect();
 });
 chrome.runtime.onStartup.addListener(connect);
-chrome.runtime.onInstalled.addListener(connect);
+chrome.runtime.onInstalled.addListener((details) => {
+  connect();
+  // First install (Web Store or unpacked): open the setup page with the one command the extension can't run itself.
+  if (details.reason === 'install') chrome.tabs.create({ url: chrome.runtime.getURL('welcome.html') });
+});
 connect();
