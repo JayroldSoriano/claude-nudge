@@ -1,0 +1,21 @@
+{
+  "hooks": {
+    "Stop": [
+      { "hooks": [ { "type": "command", "command": "~/Documents/claude-nudge/hooks/nudge-hook.sh" } ] }
+    ],
+    "Notification": [
+      { "matcher": "permission_prompt|idle_prompt|agent_needs_input|agent_completed",
+        "hooks": [ { "type": "command", "command": "~/Documents/claude-nudge/hooks/nudge-hook.sh" } ] }
+    ],
+    "PreToolUse": [
+      { "matcher": "AskUserQuestion",
+        "hooks": [ { "type": "command", "command": "~/Documents/claude-nudge/hooks/nudge-hook.sh" } ] }
+    ],
+    "PostToolUse": [
+      { "hooks": [ { "type": "command", "command": "~/Documents/claude-nudge/hooks/nudge-hook.sh" } ] }
+    ],
+    "UserPromptSubmit": [
+      { "hooks": [ { "type": "command", "command": "~/Documents/claude-nudge/hooks/nudge-hook.sh" } ] }
+    ]
+  }
+}

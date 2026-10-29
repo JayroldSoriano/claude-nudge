@@ -1,0 +1,60 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Claude Nudge</title>
+<style>
+  body { width: 300px; margin: 0; padding: 14px; font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #1f1d1a; background: #fffdf9; }
+  h1 { font-size: 15px; margin: 0 0 10px; display: flex; align-items: center; gap: 8px; }
+  .status { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; margin-left: auto; font-weight: 500; }
+  .status i { width: 8px; height: 8px; border-radius: 50%; background: #9a9a9a; display: inline-block; }
+  .status.connected i { background: #2e8b57; }
+  .row { display: flex; align-items: center; justify-content: space-between; padding: 6px 0; border-top: 1px solid #efe7dc; }
+  .row:first-of-type { border-top: 0; }
+  label { display: flex; align-items: center; justify-content: space-between; width: 100%; cursor: pointer; }
+  input[type=number] { width: 64px; }
+  select { font: inherit; }
+  .actions { display: flex; gap: 8px; margin-top: 10px; }
+  button { font: inherit; font-size: 12px; font-weight: 600; padding: 5px 10px; border: 1.5px solid #1f1d1a; border-radius: 8px; background: #fff; cursor: pointer; }
+  button.primary { background: #DA7756; color: #fff; }
+  .recent { margin-top: 12px; }
+  h2.section { font-size: 12px; margin: 12px 0 2px; color: #7a6a5a; text-transform: uppercase; letter-spacing: .04em; }
+  .trio input { width: 46px; }
+  .recent h2 { font-size: 12px; margin: 0 0 4px; color: #7a6a5a; text-transform: uppercase; letter-spacing: .04em; }
+  .ev { font-size: 12px; padding: 4px 0; border-top: 1px solid #efe7dc; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ev b { font-weight: 600; }
+  .ev small { color: #7a6a5a; }
+  .help { font-size: 11px; color: #7a6a5a; margin-top: 10px; }
+  code { background: #f1e9df; padding: 1px 4px; border-radius: 4px; }
+</style>
+</head>
+<body>
+  <h1>Claude Nudge <span class="status" id="status"><i></i><span>checking…</span></span></h1>
+
+  <div class="row"><label>Nudge when Claude is done <input type="checkbox" id="showDone"></label></div>
+  <div class="row"><label>Nudge on questions <input type="checkbox" id="showQuestion"></label></div>
+  <div class="row"><label>Nudge on permission prompts <input type="checkbox" id="showPermission"></label></div>
+  <div class="row"><label>Nudge when idle (60s) <input type="checkbox" id="showIdle"></label></div>
+  <div class="row"><label>Play a sound <input type="checkbox" id="sound"></label></div>
+  <div class="row"><label>Auto-dismiss "done" after (s) <input type="number" id="autoDismissSec" min="0" max="600"></label></div>
+  <div class="row"><label>Position
+    <select id="position"><option value="bottom-right">Bottom right</option><option value="bottom-left">Bottom left</option></select></label></div>
+  <div class="row"><label>Relay port <input type="number" id="port" min="1024" max="65535"></label></div>
+
+  <h2 class="section">Escalation (questions &amp; permissions)</h2>
+  <div class="row"><label>Mode
+    <select id="escalation"><option value="off">Off</option><option value="gentle">Gentle (center, then annoyed)</option><option value="full">Full chaos (adds noise)</option></select></label></div>
+  <div class="row"><label>Sound at level 3 <input type="checkbox" id="escalationSound"></label></div>
+  <div class="row"><label>Level timings (s) <span class="trio"><input type="number" id="escalateAt1" min="1"> <input type="number" id="escalateAt2" min="1"> <input type="number" id="escalateAt3" min="1"></span></label></div>
+  <div class="row"><label>Snooze length (min) <input type="number" id="snoozeMin" min="1" max="60"></label></div>
+
+  <div class="actions">
+    <button class="primary" id="preview">Preview nudge</button>
+    <button id="reconnect">Reconnect</button>
+  </div>
+
+  <div class="recent"><h2>Recent</h2><div id="recent"></div></div>
+  <div class="help" id="help" hidden>Relay not reachable. Start it with <code>node relay/server.js</code> in the claude-nudge folder.</div>
+  <script src="popup.js"></script>
+</body>
+</html>

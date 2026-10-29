@@ -1,0 +1,11 @@
+{
+  "name": "claude-nudge-relay",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local relay that forwards Claude Code hook events to the claude-nudge Chrome extension.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": { "node": ">=18" }
+}
