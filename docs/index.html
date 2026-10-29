@@ -114,6 +114,12 @@
 
   .install-steps { font-size: 16px; color: var(--muted); max-width: 640px; }
   .install-steps b { color: var(--ink); font-weight: 500; }
+  .use-h { font-family: var(--body); font-size: 17px; font-weight: 600; margin: 34px 0 10px; }
+  .use { margin: 0; padding: 0; list-style: none; max-width: 640px; display: grid; gap: 10px; }
+  .use li { padding-left: 18px; position: relative; font-size: 16px; color: var(--muted); }
+  .use li::before { content: ""; position: absolute; left: 0; top: .62em; width: 8px; height: 8px; background: var(--gold); }
+  .use li b { color: var(--ink); font-weight: 500; }
+  .steps code { font-size: .9em; }
   pre { font-family: var(--mono); font-size: 14px; background: var(--ink); color: var(--paper); padding: 14px 16px; border-radius: 10px; overflow-x: auto; margin: 0 0 16px; }
 
   form.notify { display: flex; gap: 10px; flex-wrap: wrap; align-items: stretch; margin-top: 18px; }
@@ -301,12 +307,23 @@
 
   <section id="install">
     <h2>Install in two steps</h2>
+    <ol class="steps">
+      <li><div><b>Add the extension to Chrome</b><span>Click "Add to Chrome" on the Web Store listing. The extension opens a setup page with one command to copy.</span></div></li>
+      <li><div><b>Run that command in your terminal</b><span>It adds the hooks to <code>~/.claude/settings.json</code> (with a backup next to it), starts the local relay, and keeps it running at login. Then restart any open Claude Code session.</span></div></li>
+    </ol>
     <pre>npx nudge-mascot setup</pre>
-    <p class="install-steps">That adds the hooks to <b>~/.claude/settings.json</b> (with a backup next to it), starts the relay, and keeps it running at login. Then add the extension from the Chrome Web Store, or load the unpacked folder it prints. Restart any running Claude Code session and run <code>npx nudge-mascot test</code> to see your first nudge.</p>
+    <p class="install-steps">To check it works, run <code>npx nudge-mascot test</code> or press <b>Preview nudge</b> in the extension popup. Nudge pops up on the current tab.</p>
     <div class="ctas">
       <a class="btn primary" id="store-btn-2" href="STORE_URL">Add to Chrome</a>
       <a class="btn" href="https://github.com/JayroldSoriano/nudge-mascot#install">Manual setup</a>
     </div>
+    <h3 class="use-h">Then just keep working</h3>
+    <ul class="use">
+      <li>Work in Claude Code as usual. When it asks a question, needs permission, or finishes, Nudge appears on whatever tab is open with the message in a bubble.</li>
+      <li>Questions and permissions escalate the longer you ignore them. Done messages stay quiet and fade after 20 seconds.</li>
+      <li>Answer in the terminal and Nudge disappears everywhere. Or press Esc, click <b>Got it</b>, or snooze for five minutes.</li>
+      <li>The popup holds the settings: which events to show, Gentle or Full Chaos or Off, sound, corner, and timings.</li>
+    </ul>
   </section>
 
   <section id="pro">
