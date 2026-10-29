@@ -20,7 +20,7 @@
     "type": "git",
     "url": "https://github.com/JayroldSoriano/claude-nudge.git"
   },
-  "homepage": "https://jayroldsoriano.github.io/claude-nudge/",
+  "homepage": "https://nudge-for-claude-code.vercel.app/",
   "keywords": [
     "claude",
     "claude-code",
