@@ -3,5 +3,5 @@ node_modules/
 .DS_Store
 dist/
 *.log
-marketing/video/**/.media/
-marketing/video/**/out/
+# Private repo, checked out separately
+marketing/
