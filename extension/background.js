@@ -86,6 +86,15 @@ async function handleEvent(event) {
   }
   if (!allowed) return;
 
+  // A blocking nudge (question/permission) keeps the stage. A "done" from another session
+  // goes to a system notification instead of replacing it.
+  const current = await getActive();
+  if (current && ESCALATING_KINDS.has(current.event.kind) && !ESCALATING_KINDS.has(event.kind)
+      && current.event.session_id !== event.session_id) {
+    showSystemNotification(event);
+    return;
+  }
+
   const { recentEvents = [] } = await chrome.storage.local.get('recentEvents');
   recentEvents.push(event);
   await chrome.storage.local.set({ recentEvents: recentEvents.slice(-10) });
