@@ -7,10 +7,10 @@
   Ignore it and it gets annoyed. Free, open source, local only.
 </p>
 <p align="center">
-  <a href="https://nudge-for-claude-code.vercel.app/">Website</a> ·
+  <a href="https://nudge-mascot.vercel.app/">Website</a> ·
   <a href="#install">Install</a> ·
   <a href="#escalation">Escalation</a> ·
-  <a href="https://nudge-for-claude-code.vercel.app/privacy">Privacy</a> ·
+  <a href="https://nudge-mascot.vercel.app/privacy">Privacy</a> ·
   <a href="https://github.com/sponsors/JayroldSoriano">Sponsor</a>
 </p>
 
@@ -92,7 +92,7 @@ Everything stays on your machine. The relay binds to `127.0.0.1` and only accept
 `/events` requests from `chrome-extension://` origins (or none, as curl sends), so web pages cannot
 read your Claude messages. The content script renders inside a closed shadow root and never reads
 the page. Messages are clipped to 1200 characters before leaving the relay. No accounts, no analytics.
-Full policy: [privacy.html](https://nudge-for-claude-code.vercel.app/privacy).
+Full policy: [privacy.html](https://nudge-mascot.vercel.app/privacy).
 
 ## Project layout
 
