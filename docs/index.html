@@ -205,6 +205,22 @@
   @keyframes blinkbulb { 0% { opacity: 1; } 50% { opacity: .15; } }
   @keyframes hop { 0%,100% { transform: scale(1.8) translateY(0); } 30% { transform: scale(1.8) translateY(-26px); } 45% { transform: scale(1.8) translateY(0); } 60% { transform: scale(1.8) translateY(-10px); } 70% { transform: scale(1.8) translateY(0); } }
   @keyframes roam { 0%,100% { transform: translateX(0); } 45%,55% { transform: translateX(var(--roam)); } }
+  /* ====== Intro: Nudge walks in and raises the curtain. Plays once per session, never under reduced motion. ====== */
+  .curtain { position: fixed; inset: 0; z-index: 2000; background: #1F1D1A; color: #FFFDF9; display: grid; place-items: center; will-change: transform; }
+  .curtain.hidden { display: none; }
+  .curtain .mark { text-align: center; transform: translateY(-6vh); }
+  .curtain .mark b { font-family: var(--display); font-size: clamp(30px, 6vw, 60px); color: #FFC53D; display: block; letter-spacing: -.01em; line-height: 1; }
+  .curtain .mark span { font-family: var(--mono); font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: #A89885; display: block; margin-top: 12px; }
+  .curtain .hem { position: absolute; left: 0; right: 0; bottom: 0; height: 6px; background: #FFC53D; }
+  .curtain .skip { position: absolute; top: 16px; right: 16px; font: 500 13px var(--body); color: #A89885; background: none; border: 1.5px solid #4A3F35; border-radius: 8px; padding: 6px 10px; }
+  .curtain .skip:hover { color: #FFFDF9; border-color: #FFFDF9; }
+  .intro { position: fixed; z-index: 2001; bottom: 18px; left: 0; width: 84px; height: 78px; pointer-events: none; will-change: transform; }
+  .intro.hidden { display: none; }
+  .intro.walking .mascot .foot-l { animation: tap .22s steps(1) infinite; }
+  .intro.walking .mascot .foot-r { animation: tap .22s steps(1) infinite .11s; }
+  .intro.lifting .mascot .arm-up { animation: none; opacity: 1; }
+  .intro.lifting .mascot .body-group { animation: none; }
+  .avatar.norise { animation: none; }
   @media (prefers-reduced-motion: reduce) {
     html { scroll-behavior: auto; }
     .nudge, .bubble, .avatar, .scale, .mover, .mascot * { animation: none !important; transition: none !important; }
@@ -310,6 +326,14 @@
   </footer>
 </div>
 
+<!-- Intro curtain. Sits on top of the fully rendered page; the page itself never waits for it. -->
+<div class="curtain" id="curtain" aria-hidden="true">
+  <div class="mark"><b>Nudge</b><span>for Claude Code</span></div>
+  <div class="hem"></div>
+  <button type="button" class="skip" id="skip-intro">Skip</button>
+</div>
+<div class="intro hidden" id="intro" aria-hidden="true"></div>
+
 <!-- The live mascot -->
 <div class="nudge hidden" id="nudge" aria-live="polite">
   <div class="mover" id="mover">
@@ -334,7 +358,7 @@
   }
   const rects = (pts, fill) => pts.map(([x, y]) => `<rect x="${x}" y="${y}" width="1" height="1" fill="${fill}"/>`).join('');
   const bottom = [2,3,4,5,6,7,8,9,10].map((x) => [x, 11]);
-  document.getElementById('avatar').innerHTML = `
+  const MASCOT = `
     <svg class="mascot" viewBox="0 0 14 13" shape-rendering="crispEdges" aria-hidden="true">
       <g class="body-group">${rects(PX.stalk, DARK)}<g class="bulb">${rects(PX.bulb, BULB)}</g>${rects(PX.body, BODY)}${rects(bottom, DARK)}${rects(PX.armLeft, BODY)}
         <g class="eyes">${rects(PX.eyes, INK)}${rects(PX.glint, GLINT)}</g><g class="brows">${rects(PX.browL, INK)}${rects(PX.browR, INK)}</g>
@@ -342,6 +366,7 @@
       <g class="foot foot-l">${rects(PX.footL, DARK)}</g><g class="foot foot-r">${rects(PX.footR, DARK)}</g>
       <g class="arm arm-up">${rects(PX.armUp, BODY)}</g><g class="arm arm-out">${rects(PX.armOut, BODY)}</g>
     </svg>`;
+  document.getElementById('avatar').innerHTML = MASCOT;
 
   // ---- Demo events. Real timings are 15/30/60s; the page uses 10/20/35s. ----
   const EVENTS = {
@@ -510,8 +535,60 @@
     } catch (_) { note.textContent = 'Couldn\'t reach the list. Try again in a minute.'; }
   });
 
-  // ---- Open with Nudge already on screen. A short beat so the first frame is the headline, then the question. ----
-  setTimeout(() => show(EVENTS.question), 900);
+  // ---- Intro: Nudge walks in along the bottom, hops, and the curtain rises with it. Then it walks to its corner
+  // and the live nudge takes over in the same spot. Skippable, once per session, never under reduced motion. ----
+  const curtain = document.getElementById('curtain'), intro = document.getElementById('intro');
+  intro.innerHTML = MASCOT;
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let seen = false; try { seen = sessionStorage.getItem('nudge-intro') === '1'; } catch (_) {}
+  function endIntro() {
+    curtain.classList.add('hidden'); intro.classList.add('hidden');
+    try { sessionStorage.setItem('nudge-intro', '1'); } catch (_) {}
+  }
+  function handoff(opened) {
+    avatar.classList.add('norise');
+    show(EVENTS.question);
+    setTimeout(() => avatar.classList.remove('norise'), 400);
+    if (opened) pointer.textContent = 'That was Nudge opening the page. Now it\'s pretending Claude asked you something. Keep reading and see what happens.';
+  }
+  if (reduced || seen || document.visibilityState !== 'visible') { endIntro(); setTimeout(() => show(EVENTS.question), 700); }
+  else runIntro();
+
+  async function runIntro() {
+    const anims = [];
+    let done = false;
+    const run = (el, kf, opt) => { const a = el.animate(kf, Object.assign({ fill: 'forwards' }, opt)); anims.push(a); return a.finished.catch(() => {}); };
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    const finish = (opened) => { if (done) return; done = true; anims.forEach((a) => a.cancel()); endIntro(); handoff(opened); };
+    document.getElementById('skip-intro').addEventListener('click', () => finish(false));
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') finish(false); }, { once: true });
+
+    const W = window.innerWidth, corner = W - 22 - 84, center = W / 2 - 42;
+    const ease = 'cubic-bezier(.4,0,.2,1)';
+    intro.classList.remove('hidden');
+    intro.classList.add('walking');
+    await run(intro, [{ transform: 'translateX(-100px)' }, { transform: `translateX(${center}px)` }], { duration: 1100, easing: ease });
+    if (done) return;
+    intro.classList.remove('walking');
+    await wait(250);
+    if (done) return;
+    intro.classList.add('lifting');
+    // The hop and the curtain share one timeline so the curtain reads as lifted by the jump.
+    await Promise.all([
+      run(intro, [
+        { transform: `translateX(${center}px) translateY(0)` },
+        { transform: `translateX(${center}px) translateY(-34px)`, offset: .35 },
+        { transform: `translateX(${center}px) translateY(0)` },
+      ], { duration: 700, easing: 'cubic-bezier(.3,0,.2,1)' }),
+      run(curtain, [{ transform: 'translateY(0)' }, { transform: 'translateY(-100%)' }], { duration: 900, delay: 180, easing: 'cubic-bezier(.5,0,.2,1)' }),
+    ]);
+    if (done) return;
+    intro.classList.remove('lifting');
+    intro.classList.add('walking');
+    await run(intro, [{ transform: `translateX(${center}px)` }, { transform: `translateX(${corner}px)` }], { duration: 900, easing: ease });
+    if (done) return;
+    finish(true);
+  }
 })();
 </script>
 </body>
