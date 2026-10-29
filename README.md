@@ -110,7 +110,7 @@ Full policy: [privacy.html](https://nudge-for-claude-code.vercel.app/privacy).
 ## Development
 
 ```sh
-git clone https://github.com/JayroldSoriano/claude-nudge && cd claude-nudge
+git clone https://github.com/JayroldSoriano/nudge-mascot && cd nudge-mascot
 node bin/nudge.js setup            # same as npx, from the checkout
 npm run icons                      # regenerate extension/icons
 npm run assets                     # demo.gif, mp4s, store screenshots (needs Chrome + ffmpeg)

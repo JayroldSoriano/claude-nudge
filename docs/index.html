@@ -235,7 +235,7 @@
       <a href="#escalation">Escalation</a>
       <a href="#how">How it works</a>
       <a href="#install">Install</a>
-      <a href="https://github.com/JayroldSoriano/claude-nudge">GitHub</a>
+      <a href="https://github.com/JayroldSoriano/nudge-mascot">GitHub</a>
     </nav>
   </header>
 
@@ -247,7 +247,7 @@
     <div class="install" id="install-cmd"><span>npx nudge-mascot setup</span><button type="button" id="copy-cmd">Copy</button></div>
     <div class="ctas">
       <a class="btn primary" id="store-btn" href="STORE_URL">Add to Chrome</a>
-      <a class="btn" href="https://github.com/JayroldSoriano/claude-nudge">Source on GitHub</a>
+      <a class="btn" href="https://github.com/JayroldSoriano/nudge-mascot">Source on GitHub</a>
     </div>
     <p class="fine">Free and open source. Nothing leaves your machine. Needs Node 18 and Chrome 116 or newer.</p>
   </section>
@@ -305,7 +305,7 @@
     <p class="install-steps">That adds the hooks to <b>~/.claude/settings.json</b> (with a backup next to it), starts the relay, and keeps it running at login. Then add the extension from the Chrome Web Store, or load the unpacked folder it prints. Restart any running Claude Code session and run <code>npx nudge-mascot test</code> to see your first nudge.</p>
     <div class="ctas">
       <a class="btn primary" id="store-btn-2" href="STORE_URL">Add to Chrome</a>
-      <a class="btn" href="https://github.com/JayroldSoriano/claude-nudge#install">Manual setup</a>
+      <a class="btn" href="https://github.com/JayroldSoriano/nudge-mascot#install">Manual setup</a>
     </div>
   </section>
 
@@ -321,7 +321,7 @@
   </section>
 
   <footer>
-    <p>Made by <a href="https://github.com/JayroldSoriano">Jayrold Soriano</a> · <a href="https://github.com/sponsors/JayroldSoriano">Sponsor</a> · <a href="privacy.html">Privacy</a> · <a href="https://github.com/JayroldSoriano/claude-nudge/issues">Issues</a></p>
+    <p>Made by <a href="https://github.com/JayroldSoriano">Jayrold Soriano</a> · <a href="https://github.com/sponsors/JayroldSoriano">Sponsor</a> · <a href="privacy.html">Privacy</a> · <a href="https://github.com/JayroldSoriano/nudge-mascot/issues">Issues</a></p>
     <p>Independent project, not affiliated with or endorsed by Anthropic. "Claude" and "Claude Code" are trademarks of Anthropic.</p>
   </footer>
 </div>
@@ -519,7 +519,7 @@
   });
 
   // Store buttons point at the README until the Web Store listing is live.
-  document.querySelectorAll('a[href="STORE_URL"]').forEach((a) => { a.href = 'https://github.com/JayroldSoriano/claude-nudge#install'; a.textContent = 'Install the extension'; });
+  document.querySelectorAll('a[href="STORE_URL"]').forEach((a) => { a.href = 'https://github.com/JayroldSoriano/nudge-mascot#install'; a.textContent = 'Install the extension'; });
 
   const form = document.getElementById('notify'), note = document.getElementById('note');
   form.addEventListener('submit', async (e) => {
