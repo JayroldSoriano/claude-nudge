@@ -1,28 +1,41 @@
 {
   "manifest_version": 3,
-  "name": "Claude Nudge",
-  "version": "0.1.0",
-  "description": "Clawd waves at you in Chrome when Claude Code has a question or finished working.",
+  "name": "Nudge for Claude Code",
+  "version": "0.2.0",
+  "description": "A pixel mascot waves in your browser when Claude Code has a question, needs permission, or is done. Local only.",
   "minimum_chrome_version": "116",
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
   },
-  "permissions": ["storage", "tabs", "scripting", "alarms", "notifications"],
-  "host_permissions": ["<all_urls>"],
+  "permissions": [
+    "storage",
+    "tabs",
+    "scripting",
+    "alarms",
+    "notifications"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
   "background": {
     "service_worker": "background.js"
   },
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Claude Nudge"
+    "default_title": "Nudge for Claude Code"
   },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
-      "js": ["content.js"],
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "content.js"
+      ],
       "run_at": "document_idle"
     }
-  ]
+  ],
+  "homepage_url": "https://github.com/JayroldSoriano/claude-nudge"
 }

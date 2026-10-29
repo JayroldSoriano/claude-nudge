@@ -1,27 +1,33 @@
 #!/usr/bin/env node
-// Generates extension/icons/icon{16,48,128}.png (pixel Clawd) with no dependencies.
+// Generates extension/icons/icon{16,48,128}.png (Nudge, the pixel mascot) with no dependencies.
 'use strict';
 const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
 
-const ORANGE = [0xda, 0x77, 0x56, 255];
-const DARK = [0xb8, 0x5c, 0x3e, 255];
-const EYE = [0x1b, 0x1b, 0x1b, 255];
+const BODY = [0xff, 0xc5, 0x3d, 255];
+const DARK = [0xc9, 0x8a, 0x12, 255];
+const INK = [0x2b, 0x21, 0x18, 255];
+const GLINT = [255, 255, 255, 255];
+const BULB = [0x7e, 0xd9, 0x57, 255];
 const NONE = [0, 0, 0, 0];
 
-// 12x11 grid
-const W = 12, H = 11;
+// 14x13 grid, same map as the content script's mascot.
+const W = 14, H = 13;
 function pixel(x, y) {
-  if (y >= 0 && y <= 8 && x >= 1 && x <= 10) {
-    if ((y === 0 || y === 8) && (x === 1 || x === 10)) return NONE;
-    if ((x === 4 || x === 7) && (y === 3 || y === 4)) return EYE;
-    if (y === 8) return DARK;
-    return ORANGE;
+  if (y === 0 && x >= 5 && x <= 7) return BULB;
+  if (x === 6 && (y === 1 || y === 2)) return DARK;
+  if (y >= 3 && y <= 11 && x >= 1 && x <= 11) {
+    if ((y === 3 || y === 11) && (x === 1 || x === 11)) return NONE;
+    if ((x === 3 && y === 6) || (x === 8 && y === 6)) return GLINT;
+    if ((x === 3 || x === 4 || x === 8 || x === 9) && (y === 6 || y === 7)) return INK;
+    if ((y === 9 && (x === 4 || x === 8)) || (y === 10 && x >= 5 && x <= 7)) return INK;
+    if (y === 11) return DARK;
+    return BODY;
   }
-  if (y === 9 && ((x >= 2 && x <= 3) || (x >= 8 && x <= 9))) return DARK;
-  if (x === 0 && (y === 5 || y === 6)) return ORANGE;
-  if (x === 11 && y >= 2 && y <= 5) return ORANGE;
+  if (y === 12 && ((x >= 3 && x <= 4) || (x >= 8 && x <= 9))) return DARK;
+  if (x === 0 && (y === 7 || y === 8)) return BODY;
+  if (x === 12 && y >= 4 && y <= 7) return BODY;
   return NONE;
 }
 

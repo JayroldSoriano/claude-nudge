@@ -1,65 +1,50 @@
-# Claude Nudge
+<p align="center">
+  <img src="extension/icons/icon128.png" width="96" height="96" alt="Nudge" style="image-rendering: pixelated">
+</p>
+<h1 align="center">Nudge for Claude Code</h1>
+<p align="center">
+  A pixel mascot waves at you in Chrome when Claude Code has a question, needs permission, or is done.<br>
+  Ignore it and it gets annoyed. Free, open source, local only.
+</p>
+<p align="center">
+  <a href="https://jayroldsoriano.github.io/claude-nudge/">Website</a> ·
+  <a href="#install">Install</a> ·
+  <a href="#escalation">Escalation</a> ·
+  <a href="https://jayroldsoriano.github.io/claude-nudge/privacy.html">Privacy</a> ·
+  <a href="https://github.com/sponsors/JayroldSoriano">Sponsor</a>
+</p>
 
-Clawd, the orange pixel mascot, waves at you in Chrome when Claude Code has a question,
-needs permission, or finished working. A speech bubble over its head shows the question
-or Claude's final message so you can stop doomscrolling and go back to the terminal.
+<p align="center"><img src="docs/demo.gif" width="800" alt="Nudge escalating from a corner wave to an alarm"></p>
+
+You start a task in Claude Code, switch to the browser "just for a second", and ten minutes later
+Claude has been sitting on a permission prompt the whole time. Nudge fixes that.
 
 ```
-Claude Code ──hook──▶ hooks/nudge-hook.sh ──POST──▶ relay/server.js ──WebSocket──▶ extension (service worker)
-                                                   (127.0.0.1:47831)                       │
-                                                                                           ▼
-                                                                          content script on the active tab:
-                                                                          Clawd waves + speech bubble
+Claude Code hook ──curl──▶ relay on 127.0.0.1 ──WebSocket──▶ extension ──▶ Nudge on your active tab
 ```
 
-## Parts
+## Install
 
-| Path | What it is |
-| --- | --- |
-| `hooks/nudge-hook.sh` | Claude Code hook. Forwards the hook's JSON payload to the relay with curl. Fire-and-forget, 2s timeout, never blocks Claude. |
-| `relay/server.js` | Zero-dependency Node relay. Normalizes `Stop`, `Notification` and `AskUserQuestion` payloads into events and pushes them over WebSocket. Localhost only; rejects any web-page origin. |
-| `extension/` | Chrome extension (Manifest V3). Service worker holds the WebSocket; content script renders the pixel Clawd and bubble inside a closed shadow root. Popup has settings and a preview button. |
-| `scripts/install-hooks.js` | Merges the hooks into `~/.claude/settings.json` (backs up first). |
-| `scripts/install-launchd.sh` | Optional macOS LaunchAgent so the relay starts at login. |
+```sh
+npx claude-nudge setup
+```
 
-## Setup
+That copies the relay and hook into `~/.claude-nudge/`, adds the hooks to `~/.claude/settings.json`
+(backup saved next to it), starts the relay and keeps it running at login (launchd on macOS,
+systemd user service on Linux), and prints where to load the extension.
 
-1. **Start the relay**
+Then load the extension: open `chrome://extensions`, turn on **Developer mode**, click **Load unpacked**,
+and pick `~/.claude-nudge/extension` (Chrome Web Store listing coming). Restart any running Claude Code
+session and run:
 
-   ```sh
-   cd ~/Documents/claude-nudge
-   npm start            # or: node relay/server.js
-   ```
+```sh
+npx claude-nudge test            # a question
+npx claude-nudge test done       # done / permission / resolved
+npx claude-nudge status          # relay health + hook check
+npx claude-nudge uninstall       # removes everything it installed
+```
 
-   To have it start at login and restart itself: `npm run install-service`.
-
-2. **Install the Claude Code hooks**
-
-   ```sh
-   npm run install-hooks
-   ```
-
-   This adds five hooks to `~/.claude/settings.json` (see `hooks/settings.snippet.json` to do it by hand):
-   - `Stop` -> "Claude is done" with the final message
-   - `PreToolUse` matcher `AskUserQuestion` -> "Claude has a question" with the question and options
-   - `Notification` matcher `permission_prompt|idle_prompt|agent_needs_input|agent_completed`
-   - `PostToolUse` and `UserPromptSubmit` -> "resolved": you acted in the terminal, so Clawd goes away everywhere
-
-   Restart any running Claude Code session so it picks up the hooks.
-
-3. **Load the extension**
-
-   Open `chrome://extensions`, turn on Developer mode, click **Load unpacked**, pick the `extension/` folder.
-   Tabs that were already open get the content script injected on the first nudge.
-
-4. **Try it**
-
-   Click the extension icon and press **Preview nudge**, or send a test event through the relay:
-
-   ```sh
-   npm run test-nudge                                          # a question
-   curl -s -X POST 'http://127.0.0.1:47831/test?kind=done'      # done / permission / resolved
-   ```
+Requires Node 18+ and Chrome 116+.
 
 ## What gets shown
 
@@ -70,56 +55,80 @@ Claude Code ──hook──▶ hooks/nudge-hook.sh ──POST──▶ relay/se
 | done | `Stop` hook, `agent_completed` | Claude's last message (expandable) | After 20s (configurable) |
 | idle | `idle_prompt` notification (60s of waiting) | Waiting message | After 20s; off by default |
 
-The nudge appears on the active tab and follows you: switch tabs or windows and Clawd re-appears there, with the same countdown. Dismissing it in one tab clears it everywhere. If a tab can't run
-content scripts (for example `chrome://` pages or the Web Store), a system notification is used instead.
-Press Esc, click **Got it**, or click Clawd to dismiss.
+Nudge appears on the active tab and follows you: switch tabs or windows and it re-appears there with
+the same countdown. Dismissing it in one tab clears it everywhere. Answering in the terminal (which fires
+`PostToolUse` or `UserPromptSubmit`) resolves it everywhere. If a tab can't run content scripts
+(`chrome://` pages, the Web Store), a system notification is used instead. Press Esc, click **Got it**,
+or click Nudge to dismiss.
 
 ## Escalation
 
-For questions and permissions, Claude is blocked until you act, so Clawd gets progressively
-harder to ignore. The clock only runs while Chrome is the focused app; time in the terminal
-doesn't count. Answering in the terminal (which fires `PostToolUse` or `UserPromptSubmit`) resolves
-the nudge everywhere.
+For questions and permissions, Claude is blocked until you act, so Nudge gets progressively harder to
+ignore. The clock only runs while Chrome is the focused app; time in the terminal doesn't count.
 
-| Level | After (default) | Clawd |
+| Level | After (default) | Nudge |
 | --- | --- | --- |
-| 0 | 0s | Corner wave |
-| 1 | 15s | Walks to bottom-center, waves harder, hint shows how long you've kept him waiting |
-| 2 | 30s | Grows 1.8x, annoyed face, foot tapping, bubble turns red and shakes once |
-| 3 | 60s | Short alarm sound (at most once a minute), hops and roams along the bottom edge |
+| 0 | 0s | Corner wave, green antenna light |
+| 1 | 15s | Walks to bottom-center, waves harder, hint shows how long you've kept Claude waiting |
+| 2 | 30s | Grows 1.8x, annoyed face, foot tapping, red light, bubble turns red and shakes once |
+| 3 | 60s | Short alarm (at most once a minute), hops and roams along the bottom edge |
 
-Modes in the popup: **Off**, **Gentle** (levels 1 and 2 only), **Full chaos** (adds level 3).
-From level 1 the bubble gets a **Snooze** button (5 minutes by default), which sends Clawd away
-and brings him back calm at level 0. "Done" nudges never escalate.
+Modes: **Off**, **Gentle** (levels 1 and 2), **Full chaos** (adds level 3). From level 1 the bubble
+has a **Snooze** button (5 minutes by default). "Done" nudges never escalate. A "done" from another
+session never replaces a blocking question; it becomes a system notification.
 
-Clawd never blocks the page: only the bubble and Clawd himself catch clicks, everything else passes through.
-Sound needs you to have interacted with the page since it loaded (Chrome's autoplay policy); the visual tiers don't depend on it.
+Nudge never blocks the page: only the bubble and the mascot catch clicks. Sound needs you to have
+interacted with the page since it loaded (Chrome's autoplay policy); the visual tiers don't depend on it.
 
 ## Settings (extension popup)
 
 Which event kinds to show, sound on/off, auto-dismiss seconds, corner position, relay port,
-escalation mode, level timings, level-3 sound, and snooze length.
-Change the port with `CLAUDE_NUDGE_PORT=...` when starting the relay and match it in the popup.
+escalation mode, level timings, level-3 sound, snooze length. Change the port with
+`CLAUDE_NUDGE_PORT=...` before `setup` and match it in the popup.
 
 ## Privacy
 
 Everything stays on your machine. The relay binds to `127.0.0.1` and only accepts WebSocket or
 `/events` requests from `chrome-extension://` origins (or none, as curl sends), so web pages cannot
-read your Claude messages. Assistant messages are clipped to 1200 characters before leaving the relay.
+read your Claude messages. The content script renders inside a closed shadow root and never reads
+the page. Messages are clipped to 1200 characters before leaving the relay. No accounts, no analytics.
+Full policy: [privacy.html](https://jayroldsoriano.github.io/claude-nudge/privacy.html).
 
-## Roadmap
+## Project layout
 
-- "Jump back" button that focuses the terminal app (relay can run `osascript` on macOS).
-- Reply to `AskUserQuestion` from the bubble.
-- Per-session grouping when several Claude Code sessions run at once.
-- Desktop apps (Electron or menu bar) reusing the same relay protocol.
-- Firefox port (MV3 with `browser.*`).
+| Path | What it is |
+| --- | --- |
+| `bin/claude-nudge.js` | The CLI: `setup`, `start`, `status`, `test`, `uninstall`. |
+| `hooks/nudge-hook.sh` | Claude Code hook. Forwards the hook's JSON to the relay with curl. Fire-and-forget, 2s timeout, never blocks Claude. |
+| `relay/server.js` | Zero-dependency Node relay with its own minimal WebSocket server. Normalizes `Stop`, `Notification`, `AskUserQuestion`, `PostToolUse`, `UserPromptSubmit`. |
+| `extension/` | Chrome extension (Manifest V3): service worker holds the WebSocket and the escalation clock; content script draws the mascot in a closed shadow root; popup has settings. |
+| `docs/` | Landing page and privacy policy (GitHub Pages). |
+| `scripts/make-assets.js` | Renders the demo GIF/MP4, Web Store screenshots, and promo tile with headless Chrome and ffmpeg. |
+| `scripts/pack-extension.sh` | Zips the extension for Web Store upload into `dist/`. |
+| `marketing/` | Launch copy and plan. |
 
 ## Development
 
 ```sh
-npm run icons     # regenerate extension/icons from scripts/make-icons.js
-node relay/server.js
+git clone https://github.com/JayroldSoriano/claude-nudge && cd claude-nudge
+node bin/claude-nudge.js setup     # same as npx, from the checkout
+npm run icons                      # regenerate extension/icons
+npm run assets                     # demo.gif, mp4s, store screenshots (needs Chrome + ffmpeg)
+npm run pack                       # dist/nudge-for-claude-code-<version>.zip
 curl -s http://127.0.0.1:47831/health
-echo '{"hook_event_name":"Stop","cwd":"/tmp/demo","last_assistant_message":"All tests pass."}' | sh hooks/nudge-hook.sh
 ```
+
+After editing the extension, click its **Reload** icon on `chrome://extensions`; a page reload is not enough.
+
+## Roadmap
+
+- Reply to `AskUserQuestion` and approve permissions from the bubble.
+- "Jump back" button that focuses the terminal app.
+- Multi-session view when several Claude Code sessions run at once.
+- Mascot and sound packs. Waiting stats.
+- Desktop apps reusing the same relay protocol. Firefox port.
+
+## License
+
+MIT. Independent project, not affiliated with or endorsed by Anthropic. "Claude" and "Claude Code"
+are trademarks of Anthropic.

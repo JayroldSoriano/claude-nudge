@@ -272,8 +272,19 @@ server.listen(PORT, HOST, () => {
 });
 server.on('error', (err) => {
   if (err.code === 'EADDRINUSE') {
-    console.error(`[claude-nudge] port ${PORT} is already in use. Is another relay running? Set CLAUDE_NUDGE_PORT to change it.`);
-    process.exit(1);
+    // If another nudge relay already owns the port, exit cleanly so a service manager doesn't restart-loop us.
+    http.get({ host: HOST, port: PORT, path: '/health', timeout: 1500 }, (res) => {
+      let body = '';
+      res.on('data', (c) => (body += c));
+      res.on('end', () => {
+        let ours = false;
+        try { ours = JSON.parse(body).ok === true; } catch (_) {}
+        if (ours) { log(`another relay is already running on port ${PORT}; exiting`); process.exit(0); }
+        console.error(`[claude-nudge] port ${PORT} is in use by something else. Set CLAUDE_NUDGE_PORT to change it.`);
+        process.exit(1);
+      });
+    }).on('error', () => { console.error(`[claude-nudge] port ${PORT} is in use. Set CLAUDE_NUDGE_PORT to change it.`); process.exit(1); });
+    return;
   }
   throw err;
 });

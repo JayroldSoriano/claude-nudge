@@ -1,4 +1,4 @@
-// claude-nudge service worker: keeps a WebSocket to the local relay and forwards
+// Nudge for Claude Code service worker: keeps a WebSocket to the local relay and forwards
 // events to the content script on the tab the user is looking at.
 
 const DEFAULTS = {

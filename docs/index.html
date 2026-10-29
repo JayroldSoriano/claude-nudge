@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nudge for Claude Code</title>
+<meta name="description" content="A pixel mascot waves at you in Chrome when Claude Code has a question, needs permission, or is done. Ignore it and it gets annoyed. Free, open source, local only.">
+<meta property="og:title" content="Nudge for Claude Code">
+<meta property="og:description" content="Claude is waiting. Nudge makes sure you know.">
+<meta property="og:image" content="https://jayroldsoriano.github.io/claude-nudge/assets/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="assets/icon128.png">
+<style>
+  :root { --ink: #1f1d1a; --paper: #fffdf9; --sand: #f1e9df; --gold: #FFC53D; --gold-dark: #C98A12; --red: #b3261e; --muted: #7a6a5a; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 17px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif; color: var(--ink); background: var(--paper); }
+  a { color: #b8641a; }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 0 20px; }
+  header { padding: 24px 0; display: flex; align-items: center; gap: 12px; }
+  header img { width: 32px; height: 32px; image-rendering: pixelated; }
+  header b { font-size: 18px; }
+  header nav { margin-left: auto; display: flex; gap: 18px; font-size: 14px; }
+  header nav a { color: var(--muted); text-decoration: none; }
+  .hero { padding: 36px 0 20px; text-align: center; }
+  h1 { font-size: clamp(34px, 6vw, 56px); line-height: 1.08; margin: 0 0 14px; letter-spacing: -.02em; }
+  .sub { font-size: 20px; color: var(--muted); max-width: 640px; margin: 0 auto 26px; }
+  .demo { border: 2px solid var(--ink); border-radius: 16px; box-shadow: 6px 6px 0 var(--ink); overflow: hidden; background: #fff; max-width: 860px; margin: 0 auto 28px; }
+  .demo img { display: block; width: 100%; height: auto; }
+  .install { display: inline-flex; align-items: center; gap: 10px; background: var(--ink); color: #fff; border-radius: 12px; padding: 12px 16px; font: 16px/1 ui-monospace, SFMono-Regular, Menlo, monospace; margin: 0 auto 14px; }
+  .install button { font: inherit; font-size: 13px; background: #fff; color: var(--ink); border: 0; border-radius: 8px; padding: 6px 10px; cursor: pointer; }
+  .ctas { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; margin: 10px 0 8px; }
+  .btn { display: inline-block; padding: 12px 18px; border: 2px solid var(--ink); border-radius: 12px; text-decoration: none; color: var(--ink); font-weight: 700; background: #fff; box-shadow: 4px 4px 0 var(--ink); }
+  .btn.primary { background: var(--gold); }
+  .btn.ghost { background: var(--sand); }
+  .badges { display: flex; gap: 8px; justify-content: center; margin: 18px 0 0; }
+  .badges img { height: 20px; }
+  .fine { font-size: 14px; color: var(--muted); margin-top: 10px; }
+  section { padding: 40px 0; }
+  h2 { font-size: 28px; margin: 0 0 18px; letter-spacing: -.01em; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+  .card { border: 2px solid var(--ink); border-radius: 14px; padding: 16px; background: #fff; box-shadow: 4px 4px 0 var(--ink); }
+  .card b { display: block; margin-bottom: 6px; }
+  .card .lvl { display: inline-block; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: var(--sand); margin-bottom: 8px; }
+  .card.red .lvl { background: #fde8e6; color: var(--red); }
+  pre { background: var(--ink); color: #fff; padding: 16px; border-radius: 12px; overflow: auto; font-size: 14px; }
+  .flow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px; }
+  .flow span { background: var(--sand); padding: 6px 10px; border-radius: 8px; }
+  .flow i { color: var(--muted); font-style: normal; }
+  form { display: flex; gap: 8px; flex-wrap: wrap; }
+  input[type=email] { font: inherit; padding: 10px 12px; border: 2px solid var(--ink); border-radius: 10px; min-width: 260px; }
+  footer { padding: 30px 0 50px; font-size: 14px; color: var(--muted); border-top: 1px solid var(--sand); margin-top: 20px; }
+  @media (max-width: 600px) { header nav { display: none; } .sub { font-size: 17px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <img src="assets/icon128.png" alt=""><b>Nudge for Claude Code</b>
+    <nav><a href="#how">How it works</a><a href="#escalation">Escalation</a><a href="#install">Install</a><a href="https://github.com/JayroldSoriano/claude-nudge">GitHub</a><a href="privacy.html">Privacy</a></nav>
+  </header>
+
+  <div class="hero">
+    <h1>Claude is waiting.<br>Nudge makes sure you know.</h1>
+    <p class="sub">A pixel mascot waves at you in Chrome when Claude Code has a question, needs permission, or is done. Ignore it and it gets annoyed.</p>
+    <div class="demo"><img src="demo.gif" alt="Nudge escalating: corner wave, walk to center, annoyed, alarm" width="1280" height="800"></div>
+    <div class="install" id="install"><span>npx claude-nudge setup</span><button onclick="navigator.clipboard.writeText('npx claude-nudge setup');this.textContent='Copied'">Copy</button></div>
+    <div class="ctas">
+      <a class="btn primary" href="STORE_URL" id="store">Add to Chrome</a>
+      <a class="btn" href="https://github.com/JayroldSoriano/claude-nudge">View on GitHub</a>
+      <a class="btn ghost" href="#pro">Pro: notify me</a>
+    </div>
+    <div class="badges">
+      <a href="https://github.com/JayroldSoriano/claude-nudge"><img src="https://img.shields.io/github/stars/JayroldSoriano/claude-nudge?style=flat-square&label=stars&color=FFC53D" alt="GitHub stars"></a>
+      <img src="https://img.shields.io/badge/license-MIT-1f1d1a?style=flat-square" alt="MIT">
+      <img src="https://img.shields.io/badge/local%20only-no%20servers-1f1d1a?style=flat-square" alt="Local only">
+    </div>
+    <p class="fine">Free and open source. Requires Node 18+ and Chrome 116+. Nothing leaves your machine.</p>
+  </div>
+
+  <section id="how">
+    <h2>How it works</h2>
+    <div class="flow"><span>Claude Code hook</span><i>→</i><span>curl</span><i>→</i><span>relay on 127.0.0.1</span><i>→</i><span>WebSocket</span><i>→</i><span>extension</span><i>→</i><span>mascot on your active tab</span></div>
+    <p>Claude Code's <code>Stop</code>, <code>Notification</code>, and <code>AskUserQuestion</code> hooks post to a zero-dependency Node relay on localhost. The relay pushes to the extension, which draws Nudge on whatever tab you're looking at, with the actual question and its options in a speech bubble. The mascot follows you across tabs and windows. Answering in the terminal dismisses it everywhere.</p>
+    <p>The relay binds to <code>127.0.0.1</code> and rejects any web-page origin. The content script lives in a closed shadow root and never reads the page. No accounts, no analytics, no servers.</p>
+  </section>
+
+  <section id="escalation">
+    <h2>The longer you ignore it, the harder it tries</h2>
+    <div class="grid">
+      <div class="card"><span class="lvl">Level 0 · 0s</span><b>Corner wave</b>Pops into the corner with the question. Polite.</div>
+      <div class="card"><span class="lvl">Level 1 · 15s</span><b>Walks to center</b>Waves harder. The hint counts how long Claude has been waiting.</div>
+      <div class="card red"><span class="lvl">Level 2 · 30s</span><b>Grows, gets annoyed</b>1.8x bigger, flat eyes, foot tapping. The bubble turns red and shakes.</div>
+      <div class="card red"><span class="lvl">Level 3 · 60s</span><b>Alarm, roams</b>A short alarm, then it hops along the bottom of the page.</div>
+    </div>
+    <p class="fine">Only questions and permissions escalate, because that's when Claude is blocked. "Done" nudges stay quiet and auto-dismiss. The clock runs only while Chrome is focused. Pick Gentle or Full Chaos, or turn it off. There's a snooze. We're not monsters.</p>
+  </section>
+
+  <section id="install">
+    <h2>Install</h2>
+    <pre>npx claude-nudge setup</pre>
+    <p>That installs the hooks into <code>~/.claude/settings.json</code>, starts the relay (and keeps it running at login), and tells you where to load the extension. Then restart Claude Code and run <code>npx claude-nudge test</code>.</p>
+    <p>Prefer to do it by hand? Everything is in the <a href="https://github.com/JayroldSoriano/claude-nudge#setup">README</a>.</p>
+  </section>
+
+  <section id="pro">
+    <h2>Pro (coming)</h2>
+    <p>Reply to questions and approve permissions from the bubble. A button that jumps back to your terminal. Multi-session view. Mascot and sound packs. "Claude waited on you 47 minutes this week."</p>
+    <!-- Replace the action with your form endpoint (Formspree, Buttondown, etc.). -->
+    <form action="FORM_ENDPOINT" method="post">
+      <input type="email" name="email" placeholder="you@example.com" required>
+      <button class="btn primary" type="submit">Notify me</button>
+    </form>
+  </section>
+
+  <footer>
+    Made by <a href="https://github.com/JayroldSoriano">Jayrold Soriano</a> · <a href="https://github.com/sponsors/JayroldSoriano">Sponsor</a> · <a href="privacy.html">Privacy</a> · <a href="https://github.com/JayroldSoriano/claude-nudge/issues">Issues</a><br>
+    Independent project. Not affiliated with or endorsed by Anthropic. "Claude" and "Claude Code" are trademarks of Anthropic.
+  </footer>
+</div>
+<!-- Analytics: uncomment once you have a Plausible or Umami site.
+<script defer data-domain="jayroldsoriano.github.io" src="https://plausible.io/js/script.js"></script> -->
+<script>
+  // Until the Web Store listing is live, the store button points at the README.
+  if (document.getElementById('store').getAttribute('href') === 'STORE_URL') {
+    document.getElementById('store').href = 'https://github.com/JayroldSoriano/claude-nudge#setup';
+    document.getElementById('store').textContent = 'Install (unpacked)';
+  }
+</script>
+</body>
+</html>

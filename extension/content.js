@@ -1,4 +1,4 @@
-// claude-nudge content script: renders a pixel Clawd that waves, with a speech bubble
+// Nudge for Claude Code content script: renders Nudge, a pixel mascot that waves, with a speech bubble
 // carrying Claude Code's question or final message. Lives in a closed shadow root so page CSS can't touch it.
 //
 // Escalation levels (driven by the service worker, only for questions/permissions):
@@ -7,45 +7,55 @@
   if (window.__claudeNudge) return;
   window.__claudeNudge = true;
 
-  const ORANGE = '#DA7756';
-  const ORANGE_DARK = '#B85C3E';
-  const INK = '#1b1b1b';
+  // Nudge, the mascot: a golden pixel blob with an antenna status light. Original design, not Anthropic's.
+  const BODY = '#FFC53D';
+  const DARK = '#C98A12';
+  const INK = '#2B2118';
+  const GLINT = '#FFFFFF';
+  const BULB = '#7ED957';
 
-  // Pixel-art Clawd on a 14x11 grid (x,y).
+  // Pixel art on a 14x13 grid (x,y).
   const PX = {
     body: [],
-    eyes: [[4, 3], [4, 4], [8, 3], [8, 4]],
-    browL: [[3, 1], [4, 2]],
-    browR: [[9, 1], [8, 2]],
-    mouth: [[5, 6], [6, 6], [7, 6]],
-    footL: [[3, 9], [4, 9]],
-    footR: [[8, 9], [9, 9]],
-    armLeft: [[0, 5], [0, 6]],
-    armUp: [[12, 2], [12, 3], [12, 4], [12, 5]],
-    armOut: [[12, 5], [12, 4], [13, 3], [13, 2]],
+    bulb: [[5, 0], [6, 0], [7, 0]],
+    stalk: [[6, 1], [6, 2]],
+    eyes: [[3, 6], [4, 6], [3, 7], [4, 7], [8, 6], [9, 6], [8, 7], [9, 7]],
+    glint: [[3, 6], [8, 6]],
+    smile: [[4, 9], [5, 10], [6, 10], [7, 10], [8, 9]],
+    frown: [[4, 10], [5, 9], [6, 9], [7, 9], [8, 10]],
+    browL: [[3, 4], [4, 5]],
+    browR: [[9, 4], [8, 5]],
+    footL: [[3, 12], [4, 12]],
+    footR: [[8, 12], [9, 12]],
+    armLeft: [[0, 7], [0, 8]],
+    armUp: [[12, 4], [12, 5], [12, 6], [12, 7]],
+    armOut: [[12, 7], [12, 6], [13, 5], [13, 4]],
   };
-  for (let y = 0; y <= 8; y++) {
+  for (let y = 3; y <= 11; y++) {
     for (let x = 1; x <= 11; x++) {
-      const corner = (y === 0 || y === 8) && (x === 1 || x === 11);
+      const corner = (y === 3 || y === 11) && (x === 1 || x === 11);
       if (!corner) PX.body.push([x, y]);
     }
   }
   const rects = (pts, fill) => pts.map(([x, y]) => `<rect x="${x}" y="${y}" width="1" height="1" fill="${fill}"/>`).join('');
 
-  const clawdSvg = `
-    <svg class="clawd" viewBox="0 0 14 11" shape-rendering="crispEdges" aria-hidden="true">
+  const mascotSvg = `
+    <svg class="mascot" viewBox="0 0 14 13" shape-rendering="crispEdges" aria-hidden="true">
       <g class="body-group">
-        ${rects(PX.body, ORANGE)}
-        ${rects([[2, 8], [3, 8], [4, 8], [5, 8], [6, 8], [7, 8], [8, 8], [9, 8], [10, 8]], ORANGE_DARK)}
-        ${rects(PX.armLeft, ORANGE)}
-        <g class="eyes">${rects(PX.eyes, INK)}</g>
+        ${rects(PX.stalk, DARK)}
+        <g class="bulb">${rects(PX.bulb, BULB)}</g>
+        ${rects(PX.body, BODY)}
+        ${rects([[2, 11], [3, 11], [4, 11], [5, 11], [6, 11], [7, 11], [8, 11], [9, 11], [10, 11]], DARK)}
+        ${rects(PX.armLeft, BODY)}
+        <g class="eyes">${rects(PX.eyes, INK)}${rects(PX.glint, GLINT)}</g>
         <g class="brows">${rects(PX.browL, INK)}${rects(PX.browR, INK)}</g>
-        <g class="mouth">${rects(PX.mouth, INK)}</g>
+        <g class="smile">${rects(PX.smile, INK)}</g>
+        <g class="frown">${rects(PX.frown, INK)}</g>
       </g>
-      <g class="foot foot-l">${rects(PX.footL, ORANGE_DARK)}</g>
-      <g class="foot foot-r">${rects(PX.footR, ORANGE_DARK)}</g>
-      <g class="arm arm-up">${rects(PX.armUp, ORANGE)}</g>
-      <g class="arm arm-out">${rects(PX.armOut, ORANGE)}</g>
+      <g class="foot foot-l">${rects(PX.footL, DARK)}</g>
+      <g class="foot foot-r">${rects(PX.footR, DARK)}</g>
+      <g class="arm arm-up">${rects(PX.armUp, BODY)}</g>
+      <g class="arm arm-out">${rects(PX.armOut, BODY)}</g>
     </svg>`;
 
   const css = `
@@ -85,7 +95,7 @@
     .root.lvl-2 .bubble, .root.lvl-3 .bubble { border-color: #b3261e; box-shadow: 4px 4px 0 #b3261e; min-width: 320px; }
 
     .head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-    .dot { width: 9px; height: 9px; border-radius: 50%; background: ${ORANGE}; flex: none; }
+    .dot { width: 9px; height: 9px; border-radius: 50%; background: ${BODY}; flex: none; }
     .dot.done { background: #2e8b57; }
     .dot.permission { background: #d9a400; }
     .dot.idle { background: #888; }
@@ -100,36 +110,42 @@
     .hint { font-size: 11px; color: #7a6a5a; flex: 1; min-width: 0; }
     .root.lvl-2 .hint, .root.lvl-3 .hint { color: #b3261e; font-weight: 600; }
     button { pointer-events: auto; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap; flex: none; border: 1.5px solid #1f1d1a; border-radius: 8px; padding: 4px 10px; background: #fff; color: #1f1d1a; }
-    button.primary { background: ${ORANGE}; color: #fff; }
+    button.primary { background: ${BODY}; color: #fff; }
     button.link { border: none; background: none; padding: 0; font-weight: 500; text-decoration: underline; color: #5a4a3a; }
     .spacer { flex: 1; }
     .timer { position: absolute; left: 10px; right: 10px; bottom: 4px; height: 3px; border-radius: 2px; background: #eadfd2; overflow: hidden; }
-    .timer > i { display: block; height: 100%; background: ${ORANGE}; width: 100%; transform-origin: left; }
+    .timer > i { display: block; height: 100%; background: ${BODY}; width: 100%; transform-origin: left; }
     .timer.running > i { animation: shrink var(--t) linear forwards; }
 
     .scale { transition: transform .6s cubic-bezier(.2,1.2,.4,1); transform-origin: bottom center; }
     .root.lvl-1 .scale { transform: scale(1.25); }
     .root.lvl-1 .scale { margin-top: 16px; }
-    .root.lvl-2 .scale { transform: scale(1.8); margin-top: 56px; }
-    .root.lvl-3 .scale { transform: scale(1.8); margin-top: 100px; animation: hop 1s cubic-bezier(.3,0,.2,1) infinite; }
-    .avatar { pointer-events: auto; cursor: pointer; width: 84px; height: 66px; animation: rise .35s cubic-bezier(.2,1.2,.4,1) both; }
-    .clawd { width: 100%; height: 100%; display: block; overflow: visible; }
-    .clawd .body-group { animation: bob 1.2s ease-in-out infinite; transform-origin: 6px 9px; }
-    .clawd .eyes { animation: blink 4s steps(1) infinite; transform-origin: 6px 4px; }
-    .clawd .brows, .clawd .mouth { opacity: 0; }
-    .clawd .arm-out { opacity: 0; }
+    .root.lvl-2 .scale { transform: scale(1.8); margin-top: 66px; }
+    .root.lvl-3 .scale { transform: scale(1.8); margin-top: 110px; animation: hop 1s cubic-bezier(.3,0,.2,1) infinite; }
+    .avatar { pointer-events: auto; cursor: pointer; width: 84px; height: 78px; animation: rise .35s cubic-bezier(.2,1.2,.4,1) both; }
+    .mascot { width: 100%; height: 100%; display: block; overflow: visible; }
+    .mascot .body-group { animation: bob 1.2s ease-in-out infinite; transform-origin: 6px 12px; }
+    .mascot .eyes { animation: blink 4s steps(1) infinite; transform-origin: 6px 7px; }
+    .mascot .brows, .mascot .frown { opacity: 0; }
+    .mascot .bulb { animation: glow 2s ease-in-out infinite; }
+    .root.lvl-1 .mascot .bulb rect { fill: #FFB020; }
+    .root.lvl-2 .mascot .bulb rect, .root.lvl-3 .mascot .bulb rect { fill: #FF4D4D; }
+    .root.lvl-2 .mascot .bulb { animation: blinkbulb .5s steps(1) infinite; }
+    .root.lvl-3 .mascot .bulb { animation: blinkbulb .2s steps(1) infinite; }
+    .mascot .arm-out { opacity: 0; }
     .avatar.waving .arm-up  { animation: waveA .5s steps(1) infinite; }
     .avatar.waving .arm-out { animation: waveB .5s steps(1) infinite; }
     .root.lvl-1 .avatar.waving .arm-up  { animation-duration: .3s; }
     .root.lvl-1 .avatar.waving .arm-out { animation-duration: .3s; }
-    .root.lvl-2 .clawd .eyes, .root.lvl-3 .clawd .eyes { animation: none; transform: scaleY(.5); }
-    .root.lvl-2 .clawd .brows, .root.lvl-3 .clawd .brows, .root.lvl-2 .clawd .mouth, .root.lvl-3 .clawd .mouth { opacity: 1; }
-    .root.lvl-2 .clawd .foot-l { animation: tap .4s steps(1) infinite; }
-    .root.lvl-3 .clawd .foot-l { animation: tap .25s steps(1) infinite; }
-    .root.lvl-3 .clawd .foot-r { animation: tap .25s steps(1) infinite .125s; }
-    .root.lvl-3 .clawd .body-group { animation: fume .3s ease-in-out infinite; }
-    .root.lvl-3 .clawd .arm-up  { animation: waveA .2s steps(1) infinite; }
-    .root.lvl-3 .clawd .arm-out { animation: waveB .2s steps(1) infinite; }
+    .root.lvl-2 .mascot .eyes, .root.lvl-3 .mascot .eyes { animation: none; transform: scaleY(.5); }
+    .root.lvl-2 .mascot .brows, .root.lvl-3 .mascot .brows, .root.lvl-2 .mascot .frown, .root.lvl-3 .mascot .frown { opacity: 1; }
+    .root.lvl-2 .mascot .smile, .root.lvl-3 .mascot .smile { opacity: 0; }
+    .root.lvl-2 .mascot .foot-l { animation: tap .4s steps(1) infinite; }
+    .root.lvl-3 .mascot .foot-l { animation: tap .25s steps(1) infinite; }
+    .root.lvl-3 .mascot .foot-r { animation: tap .25s steps(1) infinite .125s; }
+    .root.lvl-3 .mascot .body-group { animation: fume .3s ease-in-out infinite; }
+    .root.lvl-3 .mascot .arm-up  { animation: waveA .2s steps(1) infinite; }
+    .root.lvl-3 .mascot .arm-out { animation: waveB .2s steps(1) infinite; }
     .root.lvl-3 .mover { animation: roam 9s ease-in-out infinite; }
 
     @keyframes pop { from { transform: scale(.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
@@ -143,17 +159,22 @@
     @keyframes wiggle { 0%,100% { transform: rotate(-1.5deg); } 50% { transform: rotate(1.5deg); } }
     @keyframes tap { 0% { transform: translateY(-1px); } 50% { transform: translateY(0); } }
     @keyframes fume { 0%,100% { transform: translateX(-.3px); } 50% { transform: translateX(.3px); } }
+    @keyframes glow { 0%,100% { opacity: .55; } 50% { opacity: 1; } }
+    @keyframes blinkbulb { 0% { opacity: 1; } 50% { opacity: .15; } }
     @keyframes hop { 0%,100% { transform: scale(1.8) translateY(0); } 30% { transform: scale(1.8) translateY(-26px); } 45% { transform: scale(1.8) translateY(0); } 60% { transform: scale(1.8) translateY(-10px); } 70% { transform: scale(1.8) translateY(0); } }
     @keyframes roam { 0%,100% { transform: translateX(0); } 45%,55% { transform: translateX(var(--roam)); } }
     @media (prefers-reduced-motion: reduce) {
-      .root, .bubble, .avatar, .scale, .mover, .clawd * { animation: none !important; transition: none !important; }
+      .root, .bubble, .avatar, .scale, .mover, .mascot * { animation: none !important; transition: none !important; }
     }
   `;
+
+  // Used by scripts/make-assets.js to draw the mascot on promo images. Invisible to pages (isolated world).
+  window.__claudeNudgeMascotSvg = mascotSvg;
 
   const host = document.createElement('div');
   host.id = 'claude-nudge-host';
   const shadow = host.attachShadow({ mode: 'closed' });
-  shadow.innerHTML = `<style>${css}</style><div class="root hidden"><div class="mover"><div class="bubble-slot"></div><div class="scale"><div class="avatar">${clawdSvg}</div></div></div></div>`;
+  shadow.innerHTML = `<style>${css}</style><div class="root hidden"><div class="mover"><div class="bubble-slot"></div><div class="scale"><div class="avatar">${mascotSvg}</div></div></div></div>`;
   (document.body || document.documentElement).appendChild(host);
 
   const root = shadow.querySelector('.root');

@@ -1,14 +1,43 @@
 {
   "name": "claude-nudge",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
-  "description": "Clawd waves at you in Chrome when Claude Code has a question or is done.",
+  "description": "Nudge for Claude Code: a pixel mascot waves in Chrome when Claude Code has a question, needs permission, or is done.",
   "scripts": {
     "start": "node relay/server.js",
+    "setup": "node bin/claude-nudge.js setup",
+    "status": "node bin/claude-nudge.js status",
+    "test-nudge": "node bin/claude-nudge.js test",
     "icons": "node scripts/make-icons.js",
-    "install-hooks": "node scripts/install-hooks.js",
-    "install-service": "sh scripts/install-launchd.sh",
-    "test-nudge": "curl -s -X POST http://127.0.0.1:${CLAUDE_NUDGE_PORT:-47831}/test"
+    "assets": "node scripts/make-assets.js",
+    "pack": "sh scripts/pack-extension.sh"
   },
-  "engines": { "node": ">=18" }
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/JayroldSoriano/claude-nudge.git"
+  },
+  "homepage": "https://jayroldsoriano.github.io/claude-nudge/",
+  "keywords": [
+    "claude",
+    "claude-code",
+    "chrome-extension",
+    "notifications",
+    "hooks",
+    "agent"
+  ],
+  "bin": {
+    "claude-nudge": "bin/claude-nudge.js"
+  },
+  "files": [
+    "bin",
+    "relay",
+    "hooks",
+    "extension",
+    "README.md",
+    "LICENSE"
+  ]
 }
