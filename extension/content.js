@@ -1,4 +1,4 @@
-// Nudge for Claude Code content script: renders Nudge, a pixel mascot that waves, with a speech bubble
+// Nudge content script: renders Nudge, a pixel mascot that waves, with a speech bubble
 // carrying Claude Code's question or final message. Lives in a closed shadow root so page CSS can't touch it.
 //
 // Escalation levels (driven by the service worker, only for questions/permissions):

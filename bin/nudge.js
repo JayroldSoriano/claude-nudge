@@ -1,10 +1,10 @@
 #!/usr/bin/env node
-// Nudge for Claude Code CLI.
-//   npx nudge-for-claude-code setup      install hooks, relay, launch agent; print the extension step
-//   npx nudge-for-claude-code start      run the relay in the foreground
-//   npx nudge-for-claude-code status     relay health + hook status
-//   npx nudge-for-claude-code test [kind] send a test nudge (question | permission | done | resolved)
-//   npx nudge-for-claude-code uninstall  remove hooks, launch agent, and ~/.claude-nudge
+// Nudge CLI.
+//   npx nudge-mascot setup      install hooks, relay, launch agent; print the extension step
+//   npx nudge-mascot start      run the relay in the foreground
+//   npx nudge-mascot status     relay health + hook status
+//   npx nudge-mascot test [kind] send a test nudge (question | permission | done | resolved)
+//   npx nudge-mascot uninstall  remove hooks, launch agent, and ~/.claude-nudge
 'use strict';
 const fs = require('fs');
 const os = require('os');
@@ -104,7 +104,7 @@ function installService() {
     try {
       fs.mkdirSync(path.dirname(SYSTEMD_UNIT), { recursive: true });
       fs.writeFileSync(SYSTEMD_UNIT, `[Unit]
-Description=Nudge for Claude Code relay
+Description=Nudge relay
 
 [Service]
 ExecStart=${node} ${RELAY}
@@ -122,7 +122,7 @@ WantedBy=default.target
   // Fallback: detached background process for this session only.
   const child = spawn(node, [RELAY], { detached: true, stdio: 'ignore', env: { ...process.env, CLAUDE_NUDGE_PORT: String(PORT) } });
   child.unref();
-  return 'background process (re-run `npx nudge-for-claude-code start` after a reboot)';
+  return 'background process (re-run `npx nudge-mascot start` after a reboot)';
 }
 
 function removeService() {
@@ -158,7 +158,7 @@ function waitForHealth(tries = 20) {
 }
 
 async function setup() {
-  log('\nNudge for Claude Code · setup\n');
+  log('\nNudge · setup\n');
   fs.mkdirSync(INSTALL_DIR, { recursive: true });
   copyDir(path.join(PKG, 'relay'), path.join(INSTALL_DIR, 'relay'));
   copyDir(path.join(PKG, 'extension'), path.join(INSTALL_DIR, 'extension'));
@@ -172,7 +172,7 @@ async function setup() {
   const how = installService();
   const h = await waitForHealth();
   if (h) ok(`relay running on 127.0.0.1:${h.port} (${how})`);
-  else warn(`relay did not answer on port ${PORT}; try: npx nudge-for-claude-code start`);
+  else warn(`relay did not answer on port ${PORT}; try: npx nudge-mascot start`);
 
   log('\nLast step: install the extension.');
   if (STORE_URL) log(`  ${STORE_URL}`);
@@ -180,7 +180,7 @@ async function setup() {
     log('  1. Open chrome://extensions and turn on Developer mode.');
     log(`  2. Click "Load unpacked" and pick: ${path.join(INSTALL_DIR, 'extension')}`);
   }
-  log('\nThen restart any running Claude Code session and run: npx nudge-for-claude-code test\n');
+  log('\nThen restart any running Claude Code session and run: npx nudge-mascot test\n');
 }
 
 async function status() {
@@ -190,7 +190,7 @@ async function status() {
   const s = readSettings();
   const present = Object.keys(HOOKS).filter((e) => (s.hooks && s.hooks[e] || []).some((g) => (g.hooks || []).some((hk) => /nudge-hook\.sh$/.test(hk.command || ''))));
   if (present.length === Object.keys(HOOKS).length) ok(`hooks installed (${present.join(', ')})`);
-  else warn(`hooks missing: ${Object.keys(HOOKS).filter((e) => !present.includes(e)).join(', ') || 'none'}; run: npx nudge-for-claude-code setup`);
+  else warn(`hooks missing: ${Object.keys(HOOKS).filter((e) => !present.includes(e)).join(', ') || 'none'}; run: npx nudge-mascot setup`);
   if (h && h.clients === 0) warn('no extension connected: load it from chrome://extensions and click its Reload icon');
 }
 
@@ -199,7 +199,7 @@ function test(kind = 'question') {
     const req = http.request({ host: '127.0.0.1', port: PORT, path: `/test?kind=${encodeURIComponent(kind)}`, method: 'POST' }, (res) => {
       let b = ''; res.on('data', (c) => (b += c)); res.on('end', () => { log(res.statusCode === 200 ? `  ✓ sent a "${kind}" nudge` : `  ! ${b}`); resolve(); });
     });
-    req.on('error', () => { warn(`relay not reachable on port ${PORT}; run: npx nudge-for-claude-code setup`); resolve(); });
+    req.on('error', () => { warn(`relay not reachable on port ${PORT}; run: npx nudge-mascot setup`); resolve(); });
     req.end();
   });
 }
@@ -220,11 +220,11 @@ const cmd = process.argv[2] || 'help';
 ({
   setup, start, status, uninstall,
   test: () => test(process.argv[3]),
-  help: () => log(`Nudge for Claude Code
+  help: () => log(`Nudge
 
-  npx nudge-for-claude-code setup        install hooks + relay, then load the extension
-  npx nudge-for-claude-code start        run the relay in the foreground
-  npx nudge-for-claude-code status       relay health and hook status
-  npx nudge-for-claude-code test [kind]  question | permission | done | resolved
-  npx nudge-for-claude-code uninstall    remove everything this tool installed`),
+  npx nudge-mascot setup        install hooks + relay, then load the extension
+  npx nudge-mascot start        run the relay in the foreground
+  npx nudge-mascot status       relay health and hook status
+  npx nudge-mascot test [kind]  question | permission | done | resolved
+  npx nudge-mascot uninstall    remove everything this tool installed`),
 }[cmd] || (() => { log(`unknown command: ${cmd}`); process.exit(1); }))();

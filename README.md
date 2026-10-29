@@ -1,7 +1,7 @@
 <p align="center">
   <img src="extension/icons/icon128.png" width="96" height="96" alt="Nudge" style="image-rendering: pixelated">
 </p>
-<h1 align="center">Nudge for Claude Code</h1>
+<h1 align="center">Nudge</h1>
 <p align="center">
   A pixel mascot waves at you in Chrome when Claude Code has a question, needs permission, or is done.<br>
   Ignore it and it gets annoyed. Free, open source, local only.
@@ -26,7 +26,7 @@ Claude Code hook ──curl──▶ relay on 127.0.0.1 ──WebSocket──▶
 ## Install
 
 ```sh
-npx nudge-for-claude-code setup
+npx nudge-mascot setup
 ```
 
 That copies the relay and hook into `~/.claude-nudge/`, adds the hooks to `~/.claude/settings.json`
@@ -38,10 +38,10 @@ and pick `~/.claude-nudge/extension` (Chrome Web Store listing coming). Restart 
 session and run:
 
 ```sh
-npx nudge-for-claude-code test            # a question
-npx nudge-for-claude-code test done       # done / permission / resolved
-npx nudge-for-claude-code status          # relay health + hook check
-npx nudge-for-claude-code uninstall       # removes everything it installed
+npx nudge-mascot test            # a question
+npx nudge-mascot test done       # done / permission / resolved
+npx nudge-mascot status          # relay health + hook check
+npx nudge-mascot uninstall       # removes everything it installed
 ```
 
 Requires Node 18+ and Chrome 116+.
@@ -98,7 +98,7 @@ Full policy: [privacy.html](https://nudge-for-claude-code.vercel.app/privacy).
 
 | Path | What it is |
 | --- | --- |
-| `bin/claude-nudge.js` | The CLI: `setup`, `start`, `status`, `test`, `uninstall`. |
+| `bin/nudge.js` | The CLI: `setup`, `start`, `status`, `test`, `uninstall`. |
 | `hooks/nudge-hook.sh` | Claude Code hook. Forwards the hook's JSON to the relay with curl. Fire-and-forget, 2s timeout, never blocks Claude. |
 | `relay/server.js` | Zero-dependency Node relay with its own minimal WebSocket server. Normalizes `Stop`, `Notification`, `AskUserQuestion`, `PostToolUse`, `UserPromptSubmit`. |
 | `extension/` | Chrome extension (Manifest V3): service worker holds the WebSocket and the escalation clock; content script draws the mascot in a closed shadow root; popup has settings. |
@@ -111,10 +111,10 @@ Full policy: [privacy.html](https://nudge-for-claude-code.vercel.app/privacy).
 
 ```sh
 git clone https://github.com/JayroldSoriano/claude-nudge && cd claude-nudge
-node bin/claude-nudge.js setup     # same as npx, from the checkout
+node bin/nudge.js setup            # same as npx, from the checkout
 npm run icons                      # regenerate extension/icons
 npm run assets                     # demo.gif, mp4s, store screenshots (needs Chrome + ffmpeg)
-npm run pack                       # dist/nudge-for-claude-code-<version>.zip
+npm run pack                       # dist/nudge-<version>.zip
 curl -s http://127.0.0.1:47831/health
 ```
 

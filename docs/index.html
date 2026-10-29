@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Nudge for Claude Code</title>
+<title>Nudge</title>
 <meta name="description" content="A pixel mascot waves at you in Chrome when Claude Code has a question, needs permission, or is done. Ignore it and it gets annoyed. Free, open source, local only.">
-<meta property="og:title" content="Nudge for Claude Code">
+<meta property="og:title" content="Nudge">
 <meta property="og:description" content="Claude is waiting. Nudge makes sure you know.">
 <meta property="og:image" content="https://nudge-for-claude-code.vercel.app/assets/og.png">
 <meta name="twitter:card" content="summary_large_image">
@@ -230,7 +230,7 @@
 <body>
 <div class="wrap">
   <header class="top">
-    <img src="assets/icon128.png" alt=""> Nudge for Claude Code
+    <img src="assets/icon128.png" alt=""> Nudge
     <nav>
       <a href="#escalation">Escalation</a>
       <a href="#how">How it works</a>
@@ -244,7 +244,7 @@
     <h1>Claude is waiting on you. <em>Nudge</em> makes sure you notice.</h1>
     <p class="lede">You start a task, tab over to the browser for a second, and come back ten minutes later to find Claude sitting on a question. Nudge puts a small pixel mascot on whatever tab you're reading, with the question in a bubble. <b>Ignore it and it gets annoyed.</b></p>
     <p class="pointer"><span id="pointer-text">That's Nudge in the corner. This page just pretended Claude asked you something. Keep reading and see what happens.</span><button class="link" id="bring-back" hidden>Bring Nudge back</button></p>
-    <div class="install" id="install-cmd"><span>npx nudge-for-claude-code setup</span><button type="button" id="copy-cmd">Copy</button></div>
+    <div class="install" id="install-cmd"><span>npx nudge-mascot setup</span><button type="button" id="copy-cmd">Copy</button></div>
     <div class="ctas">
       <a class="btn primary" id="store-btn" href="STORE_URL">Add to Chrome</a>
       <a class="btn" href="https://github.com/JayroldSoriano/claude-nudge">Source on GitHub</a>
@@ -301,8 +301,8 @@
 
   <section id="install">
     <h2>Install in two steps</h2>
-    <pre>npx nudge-for-claude-code setup</pre>
-    <p class="install-steps">That adds the hooks to <b>~/.claude/settings.json</b> (with a backup next to it), starts the relay, and keeps it running at login. Then add the extension from the Chrome Web Store, or load the unpacked folder it prints. Restart any running Claude Code session and run <code>npx nudge-for-claude-code test</code> to see your first nudge.</p>
+    <pre>npx nudge-mascot setup</pre>
+    <p class="install-steps">That adds the hooks to <b>~/.claude/settings.json</b> (with a backup next to it), starts the relay, and keeps it running at login. Then add the extension from the Chrome Web Store, or load the unpacked folder it prints. Restart any running Claude Code session and run <code>npx nudge-mascot test</code> to see your first nudge.</p>
     <div class="ctas">
       <a class="btn primary" id="store-btn-2" href="STORE_URL">Add to Chrome</a>
       <a class="btn" href="https://github.com/JayroldSoriano/claude-nudge#install">Manual setup</a>
@@ -328,7 +328,7 @@
 
 <!-- Intro curtain. Sits on top of the fully rendered page; the page itself never waits for it. -->
 <div class="curtain" id="curtain" aria-hidden="true">
-  <div class="mark"><b>Nudge</b><span>for Claude Code</span></div>
+  <div class="mark"><b>Nudge</b><span>works with Claude Code</span></div>
   <div class="hem"></div>
   <button type="button" class="skip" id="skip-intro">Skip</button>
 </div>
@@ -370,10 +370,10 @@
 
   // ---- Demo events. Real timings are 15/30/60s; the page uses 10/20/35s. ----
   const EVENTS = {
-    question:   { kind: 'question', title: 'Claude has a question', project: 'claude-nudge', message: 'The migration touches the users table. Run it against prod now, or do a dry run first?', options: ['Run on prod', 'Dry run first', 'Skip for now'] },
-    permission: { kind: 'permission', title: 'Claude needs permission', project: 'claude-nudge', message: 'Bash: npm publish --access public' },
-    done:       { kind: 'done', title: 'Claude is done', project: 'claude-nudge', message: 'Renamed the package, added the MIT license, and wrote the installer. All 14 tests pass. Ready to push when you are.', auto: 20 },
-    idle:       { kind: 'idle', title: 'Claude is waiting', project: 'claude-nudge', message: 'No task running. Claude has been idle for a minute.', auto: 20 },
+    question:   { kind: 'question', title: 'Claude has a question', project: 'nudge', message: 'The migration touches the users table. Run it against prod now, or do a dry run first?', options: ['Run on prod', 'Dry run first', 'Skip for now'] },
+    permission: { kind: 'permission', title: 'Claude needs permission', project: 'nudge', message: 'Bash: npm publish --access public' },
+    done:       { kind: 'done', title: 'Claude is done', project: 'nudge', message: 'Renamed the package, added the MIT license, and wrote the installer. All 14 tests pass. Ready to push when you are.', auto: 20 },
+    idle:       { kind: 'idle', title: 'Claude is waiting', project: 'nudge', message: 'No task running. Claude has been idle for a minute.', auto: 20 },
   };
   const STEPS = [0, 10, 20, 35]; // seconds on this page
   const fmt = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
@@ -510,7 +510,7 @@
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && current) dismiss(); });
   soundBox.addEventListener('change', () => { if (soundBox.checked) blip('question'); });
 
-  const cmd = 'npx nudge-for-claude-code setup';
+  const cmd = 'npx nudge-mascot setup';
   document.getElementById('copy-cmd').addEventListener('click', (e) => {
     const btn = e.currentTarget;
     const ok = () => { btn.textContent = 'Copied'; setTimeout(() => (btn.textContent = 'Copy'), 1600); };

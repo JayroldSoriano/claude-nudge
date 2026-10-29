@@ -1,13 +1,13 @@
 {
-  "name": "nudge-for-claude-code",
+  "name": "nudge-mascot",
   "version": "1.0.0",
   "private": true,
-  "description": "Nudge for Claude Code: a pixel mascot waves in Chrome when Claude Code has a question, needs permission, or is done.",
+  "description": "Nudge: a pixel mascot waves in Chrome when Claude Code has a question, needs permission, or is done.",
   "scripts": {
     "start": "node relay/server.js",
-    "setup": "node bin/claude-nudge.js setup",
-    "status": "node bin/claude-nudge.js status",
-    "test-nudge": "node bin/claude-nudge.js test",
+    "setup": "node bin/nudge.js setup",
+    "status": "node bin/nudge.js status",
+    "test-nudge": "node bin/nudge.js test",
     "icons": "node scripts/make-icons.js",
     "assets": "node scripts/make-assets.js",
     "pack": "sh scripts/pack-extension.sh"
@@ -30,7 +30,7 @@
     "agent"
   ],
   "bin": {
-    "nudge-for-claude-code": "bin/claude-nudge.js"
+    "nudge-mascot": "bin/nudge.js"
   },
   "files": [
     "bin",

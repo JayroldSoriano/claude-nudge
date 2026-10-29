@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 'use strict';
-// claude-nudge relay: receives Claude Code hook payloads over HTTP (from hooks/nudge-hook.sh)
+// Nudge relay: receives Claude Code hook payloads over HTTP (from hooks/nudge-hook.sh)
 // and pushes normalized events to the Chrome extension over a WebSocket.
 // Zero dependencies. Binds to 127.0.0.1 only.
 
@@ -264,7 +264,7 @@ setInterval(() => {
 }, PING_INTERVAL_MS).unref();
 
 function log(msg) {
-  console.log(`[claude-nudge ${new Date().toLocaleTimeString()}] ${msg}`);
+  console.log(`[nudge ${new Date().toLocaleTimeString()}] ${msg}`);
 }
 
 server.listen(PORT, HOST, () => {
@@ -280,10 +280,10 @@ server.on('error', (err) => {
         let ours = false;
         try { ours = JSON.parse(body).ok === true; } catch (_) {}
         if (ours) { log(`another relay is already running on port ${PORT}; exiting`); process.exit(0); }
-        console.error(`[claude-nudge] port ${PORT} is in use by something else. Set CLAUDE_NUDGE_PORT to change it.`);
+        console.error(`[nudge] port ${PORT} is in use by something else. Set CLAUDE_NUDGE_PORT to change it.`);
         process.exit(1);
       });
-    }).on('error', () => { console.error(`[claude-nudge] port ${PORT} is in use. Set CLAUDE_NUDGE_PORT to change it.`); process.exit(1); });
+    }).on('error', () => { console.error(`[nudge] port ${PORT} is in use. Set CLAUDE_NUDGE_PORT to change it.`); process.exit(1); });
     return;
   }
   throw err;

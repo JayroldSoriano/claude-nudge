@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Set up Nudge for Claude Code</title>
+<title>Set up Nudge</title>
 <style>
   :root { --body: #FFC53D; --ink: #1f1d1a; --muted: #7a6a5a; --cream: #fffdf9; --paper: #f1e9df; --line: #e4d9cb; --ok: #2e8b57; }
   * { box-sizing: border-box; }
@@ -46,7 +46,7 @@
       <div class="n">1</div>
       <div>
         <h2>Run this once in your terminal</h2>
-        <div class="cmd"><code id="cmd">npx nudge-for-claude-code setup</code><button id="copy" type="button">Copy</button></div>
+        <div class="cmd"><code id="cmd">npx nudge-mascot setup</code><button id="copy" type="button">Copy</button></div>
         <p class="muted">It adds the Claude Code hooks to <code>~/.claude/settings.json</code> (with a backup) and starts a tiny relay on 127.0.0.1 that keeps running at login. Needs Node 18 or newer. This page updates on its own when the relay is running.</p>
       </div>
     </li>
@@ -61,7 +61,7 @@
       <div class="n">3</div>
       <div>
         <h2>Send a test nudge</h2>
-        <div class="cmd"><code id="cmd-test">npx nudge-for-claude-code test</code><button id="copy-test" type="button">Copy</button></div>
+        <div class="cmd"><code id="cmd-test">npx nudge-mascot test</code><button id="copy-test" type="button">Copy</button></div>
         <p class="muted">Then switch to any website tab. Nudge waves in the corner. Settings live in the toolbar popup.</p>
       </div>
     </li>

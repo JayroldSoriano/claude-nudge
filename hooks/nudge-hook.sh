@@ -1,5 +1,5 @@
 #!/bin/sh
-# claude-nudge hook: forwards the Claude Code hook payload (stdin JSON) to the local relay.
+# Nudge hook: forwards the Claude Code hook payload (stdin JSON) to the local relay.
 # Fire-and-forget: 2s timeout, never fails, so Claude Code is never blocked when the relay is down.
 PORT="${CLAUDE_NUDGE_PORT:-47831}"
 curl -s -m 2 -X POST \

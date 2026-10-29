@@ -1,8 +1,8 @@
 {
-  "name": "claude-nudge-relay",
+  "name": "nudge-relay",
   "version": "0.1.0",
   "private": true,
-  "description": "Local relay for Nudge for Claude Code.",
+  "description": "Local relay for Nudge.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"

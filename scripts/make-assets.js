@@ -43,7 +43,7 @@ function scene({ w, h, event, timeline, caption, scroll = 0, endCard = false, bi
   <div class="bar"><div class="pill"></div><b>feed</b><div class="search"></div></div>
   <div class="feed">${cards}</div>
   ${caption ? `<div class="caption">${caption}</div>` : ''}
-  ${endCard ? `<div class="end"><img src="file://${path.join(ROOT, 'extension', 'icons', 'icon128.png')}" width="96" height="96" style="image-rendering:pixelated"><h1>Nudge for Claude Code</h1><code>npx nudge-for-claude-code setup</code><p>Free · open source · local only</p></div>` : ''}
+  ${endCard ? `<div class="end"><img src="file://${path.join(ROOT, 'extension', 'icons', 'icon128.png')}" width="96" height="96" style="image-rendering:pixelated"><h1>Nudge</h1><code>npx nudge-mascot setup</code><p>Free · open source · local only</p></div>` : ''}
   <script>
     window.chrome = { runtime: { onMessage: { addListener(fn) { window.__l = fn; } }, sendMessage() { return Promise.resolve(); } } };
   </script>
@@ -142,7 +142,7 @@ if (!only || only === 'stills') {
     .m .arm-out { opacity: 1; }
     #claude-nudge-host { display: none; }
   </style></head><body>
-  <div class="t"><h1>Claude is<br>waiting.</h1><p>Nudge for Claude Code</p></div>
+  <div class="t"><h1>Claude is<br>waiting.</h1><p>Nudge</p></div>
   <div class="m" id="m"></div>
   <script>window.chrome = { runtime: { onMessage: { addListener() {} }, sendMessage() { return Promise.resolve(); } } };</script>
   <script>${CONTENT_JS}</script>

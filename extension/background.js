@@ -1,4 +1,4 @@
-// Nudge for Claude Code service worker: keeps a WebSocket to the local relay and forwards
+// Nudge service worker: keeps a WebSocket to the local relay and forwards
 // events to the content script on the tab the user is looking at.
 
 const DEFAULTS = {
@@ -292,7 +292,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   }
   if (msg && msg.type === 'previewNudge') {
     getSettings().then((settings) => handleEvent({
-      id: Date.now(), ts: Date.now(), kind: 'question', title: 'Claude has a question', project: 'claude-nudge',
+      id: Date.now(), ts: Date.now(), kind: 'question', title: 'Claude has a question', project: 'nudge',
       message: 'Preview nudge. Should I keep the sessions table or move auth to JWT?',
       options: [{ header: 'Approach', choices: ['Keep sessions', 'Move to JWT'] }],
     })).then(() => sendResponse({ ok: true }));
