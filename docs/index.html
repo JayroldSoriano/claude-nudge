@@ -329,7 +329,7 @@
   <section id="pro">
     <h2>Coming next</h2>
     <p>Answer questions and approve permissions from the bubble. A button that jumps back to your terminal. One view when several sessions want you. Mascot and sound packs. A weekly "Claude waited on you 47 minutes" that you'll want to screenshot.</p>
-    <form class="notify" id="notify" data-endpoint="FORM_ENDPOINT" novalidate>
+    <form class="notify" id="notify" data-endpoint="https://api.convertkit.com/v3/forms/10117772/subscribe" data-key="7rAfBc1tD4x1vt6mBYGe2A" novalidate>
       <label for="email" class="eyebrow" style="flex-basis:100%;margin:0">Get one email when it ships</label>
       <input type="email" id="email" name="email" placeholder="you@example.com" required autocomplete="email">
       <button class="btn" type="submit">Notify me</button>
@@ -546,8 +546,8 @@
     const endpoint = form.dataset.endpoint;
     if (!endpoint || endpoint === 'FORM_ENDPOINT') { note.textContent = 'The list isn\'t connected yet. Star the repo on GitHub to follow along.'; return; }
     try {
-      const r = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ email }) });
-      note.textContent = r.ok ? 'Added. One email when it ships, nothing else.' : 'Couldn\'t add you. Try again in a minute.';
+      const r = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ api_key: form.dataset.key, email }) });
+      note.textContent = r.ok ? 'Added. Check your inbox to confirm, then it\'s one email when it ships, nothing else.' : 'Couldn\'t add you. Check the address and try again.';
       if (r.ok) form.reset();
     } catch (_) { note.textContent = 'Couldn\'t reach the list. Try again in a minute.'; }
   });
