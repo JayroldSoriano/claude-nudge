@@ -100,6 +100,9 @@ async function refreshPhone() {
     return;
   }
   const paired = s.paired && typeof s.phones === 'number' && s.phones > 0;
+  // Prefill the relay the laptop last used, so Unpair -> Pair a phone goes back to the same place.
+  const relayInput = $('relayUrl');
+  if (!relayInput.value && s.relay) relayInput.placeholder = s.relay;
   $('pairStart').hidden = paired;
   $('unpair').hidden = !s.paired;
   $('relayRow').hidden = s.paired;
@@ -119,7 +122,7 @@ $('pairStart').addEventListener('click', async () => {
   $('pairStart').disabled = true;
   $('phoneState').textContent = 'Asking the relay…';
   try {
-    const relay = (settings.relayUrl || '').trim() || undefined;
+    const relay = (settings.relayUrl || '').trim() || $('relayUrl').placeholder || undefined;
     const r = await relayApi('pair/start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ relay }) });
     showPairBox(r);
     await refreshPhone();

@@ -11,6 +11,11 @@ const CLOUD = process.env.CLAUDE_NUDGE_CLOUD || path.join(INSTALL_DIR, 'cloud.js
 const SETTINGS = path.join(HOME, '.claude', 'settings.json');
 const APPROVE = path.join(INSTALL_DIR, 'nudge-approve.js');
 const DEFAULT_RELAY = process.env.CLAUDE_NUDGE_RELAY || 'https://relay.nudgemascot.com';
+const LAST_RELAY = path.join(INSTALL_DIR, 'relay-url'); // survives unpair, so "Pair a phone" again reuses it
+
+function lastRelay() {
+  try { return fs.readFileSync(LAST_RELAY, 'utf8').trim() || null; } catch (_) { return null; }
+}
 const APPROVE_RE = /nudge-approve\.js"?$/;
 
 function read() {
@@ -78,11 +83,14 @@ function pairLink(code, relay) {
 
 // Mint a pairing code on the hosted relay, remember the laptop token, install the hooks.
 async function start(relayUrl) {
-  const relay = String(relayUrl || (read() || {}).relay || DEFAULT_RELAY).replace(/\/$/, '');
-  const res = await fetch(`${relay}/pair/start`, { method: 'POST', signal: AbortSignal.timeout(8000) });
+  const relay = String(relayUrl || (read() || {}).relay || lastRelay() || DEFAULT_RELAY).replace(/\/$/, '');
+  let res;
+  try { res = await fetch(`${relay}/pair/start`, { method: 'POST', signal: AbortSignal.timeout(8000) }); }
+  catch (e) { throw new Error(`could not reach ${relay} (${e.message})`); }
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(body.error || `relay answered HTTP ${res.status}`);
+  if (!res.ok) throw new Error(body.error || `${relay} answered HTTP ${res.status}`);
   fs.mkdirSync(INSTALL_DIR, { recursive: true });
+  fs.writeFileSync(LAST_RELAY, (body.relay || relay) + '\n');
   fs.writeFileSync(CLOUD, JSON.stringify({ relay: body.relay || relay, userId: body.userId, laptopToken: body.laptopToken, pairedAt: new Date().toISOString() }, null, 2) + '\n', { mode: 0o600 });
   ensureApproveScript();
   installApprovalHooks();
@@ -101,7 +109,7 @@ function stop() {
 // Local state plus, when paired, what the hosted relay knows (phones that claimed, devices with push).
 async function status() {
   const c = read();
-  const base = { paired: !!c, relay: c ? c.relay : DEFAULT_RELAY, userId: c ? c.userId : null, hooks: hooksInstalled(), phones: null, devices: null, pairCodeOpen: false };
+  const base = { paired: !!c, relay: c ? c.relay : (lastRelay() || DEFAULT_RELAY), userId: c ? c.userId : null, hooks: hooksInstalled(), phones: null, devices: null, pairCodeOpen: false };
   if (!c || typeof fetch !== 'function') return base;
   try {
     const res = await fetch(`${c.relay}/status`, { headers: { Authorization: `Bearer ${c.laptopToken}` }, signal: AbortSignal.timeout(5000) });
