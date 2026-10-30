@@ -71,11 +71,17 @@ function removeApprovalHooks() {
   writeSettings(settings);
 }
 
-function hooksInstalled() {
+// Whether nudge-approve.js is installed for this event (PreToolUse: on a matcher that covers AskUserQuestion).
+// Read on every call, so a manual edit of settings.json counts at once.
+function approvalHookFor(event, matcherRe) {
   const s = readSettings();
-  const has = (ev) => (s.hooks && s.hooks[ev] || []).some((g) => (g.hooks || []).some((h) => APPROVE_RE.test(h.command || '')));
-  return has('PermissionRequest') && has('PreToolUse');
+  const list = s.hooks && Array.isArray(s.hooks[event]) ? s.hooks[event] : [];
+  return list.some((g) => (!matcherRe || matcherRe.test(g.matcher || '')) && (g.hooks || []).some((h) => APPROVE_RE.test(h.command || '')));
 }
+const permissionHookInstalled = () => approvalHookFor('PermissionRequest', null);
+// An empty matcher, "*" or one naming AskUserQuestion all fire the hook for questions.
+const questionHookInstalled = () => approvalHookFor('PreToolUse', /^$|^\*$|(^|\|)AskUserQuestion($|\|)/);
+const hooksInstalled = () => permissionHookInstalled() && questionHookInstalled();
 
 function pairLink(code, relay) {
   return `nudge://pair?code=${encodeURIComponent(code)}&relay=${encodeURIComponent(relay)}`;
@@ -119,4 +125,4 @@ async function status() {
   return base;
 }
 
-module.exports = { read, start, stop, status, pairLink, installApprovalHooks, removeApprovalHooks, hooksInstalled, CLOUD, APPROVE, DEFAULT_RELAY };
+module.exports = { read, start, stop, status, pairLink, installApprovalHooks, removeApprovalHooks, hooksInstalled, permissionHookInstalled, questionHookInstalled, CLOUD, APPROVE, DEFAULT_RELAY };

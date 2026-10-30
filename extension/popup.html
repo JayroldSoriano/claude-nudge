@@ -65,10 +65,11 @@
   </div>
 
   <h2 class="section">Test nudges</h2>
-  <div class="help" style="margin:0 0 6px">Sends a fake event through the relay, like <code>npx nudge-mascot test</code>: the bubble here and the paired phone both get it.</div>
+  <div class="help" style="margin:0 0 6px">Sends a fake event through the relay, like <code>npx nudge-mascot test</code>: the bubble here and the paired phone both get it. Answers are recorded like real ones.</div>
   <div class="actions" style="margin-top:0; flex-wrap: wrap">
-    <button class="test" data-kind="question">Question</button>
-    <button class="test" data-kind="approve" title="A permission request the phone can Allow or Deny">Permission</button>
+    <button class="test" data-kind="question" title="One question: tap a choice in the bubble to answer">Question</button>
+    <button class="test" data-kind="questions" title="Two questions, one multi-select: pick, then Send answers">Questions</button>
+    <button class="test" data-kind="approve" title="A permission request you can Allow or Deny in the bubble or on the phone">Permission</button>
     <button class="test" data-kind="done">Done</button>
     <button class="test" data-kind="approve" data-phone-delay="5" title="Lock the phone within 5 seconds; the notification arrives with Allow / Deny">Lock screen (5 s)</button>
   </div>

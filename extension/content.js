@@ -183,45 +183,66 @@
   const avatar = shadow.querySelector('.avatar');
   let dismissTimer = null;
   let waveTimer = null;
+  let settleTimer = null;
   let current = null;
   let level = 0;
+  let settled = false; // showing "Sent to Claude" / "Answered on your phone" for a moment before dismissing
+  let sessions = []; // the session switcher's pills; empty when only one session has a nudge
+  let pillTimer = null;
 
+  // Events from other agents carry `agent`; Claude Code's may not (older relays), so absent means Claude.
+  const AGENT_NAMES = { codex: 'Codex', gemini: 'Gemini' };
+  const who = () => (current && AGENT_NAMES[current.agent]) || 'Claude';
   const HINTS = {
     done: () => 'Esc to dismiss',
     idle: () => 'Esc to dismiss',
-    0: () => 'Waiting for you in the terminal',
-    1: (s) => `Still here. Claude has been waiting ${s}s.`,
-    2: () => 'Hey. Claude is blocked on you.',
-    3: () => 'CLAUDE. HAS. BEEN. WAITING.',
+    0: (_s, here) => (here ? 'Answer here or in the terminal' : 'Waiting for you in the terminal'),
+    1: (s) => `Still here. ${who()} has been waiting ${s}s.`,
+    2: () => `Hey. ${who()} is blocked on you.`,
+    3: () => `${who().toUpperCase()}. HAS. BEEN. WAITING.`,
   };
 
   function esc(s) {
     return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
 
-  function render(event, settings, expiresAt, startLevel = 0, waitingMs = 0) {
+  // `sessions`: pills for the switcher (empty with one session). `quiet`: a switch or refresh, not a new nudge,
+  // so no sound, and no pop or shake when the bubble is already on screen.
+  function render(event, settings, expiresAt, startLevel = 0, waitingMs = 0, { sessions: pills = [], quiet = false } = {}) {
     if (current && current.id === event.id) {
-      setLevel(startLevel, waitingMs, false);
+      if (!settled) { updatePills(pills); setLevel(startLevel, waitingMs, false); }
       return; // already showing here
     }
     const remainingMs = expiresAt ? expiresAt - Date.now() : 0;
     if (expiresAt && remainingMs <= 0) return;
     const auto = remainingMs > 0 ? remainingMs / 1000 : 0;
+    const switching = quiet && !!current && !settled && !root.classList.contains('hidden');
+    clearTimeout(settleTimer);
+    settled = false;
     current = event;
     root.classList.toggle('left', settings.position === 'bottom-left');
-    const opts = (event.options || [])
+    const reply = replyKind(event);
+    const qs = event.options || [];
+    // Several questions are each shown with their own text, so the joined message would only repeat them.
+    const showMsg = !(reply === 'question' && qs.length > 1);
+    const opts = reply ? '' : qs
       .flatMap((q) => q.choices || [])
       .map((c) => `<span class="opt">${esc(c)}</span>`)
       .join('');
     slot.innerHTML = `
-      <div class="bubble" role="status" aria-live="polite">
+      <div class="bubble${switching ? ' nopop' : ''}" role="status" aria-live="polite">
         <div class="head">
           <span class="dot ${esc(event.kind)}"></span>
           <span class="title">${esc(event.title)}</span>
           ${event.project ? `<span class="project" title="${esc(event.cwd || event.project)}">${esc(event.project)}</span>` : ''}
+          ${event.agent && event.agent !== 'claude-code' ? `<span class="agent">${esc(AGENT_NAMES[event.agent] || event.agent)}</span>` : ''}
         </div>
-        <div class="msg">${esc(event.message)}</div>
+        ${showMsg ? `<div class="msg">${esc(event.message)}</div>` : ''}
         ${opts ? `<div class="opts">${opts}</div>` : ''}
+        ${event.kind === 'permission' && !reply ? '<div class="note">Answer in the terminal</div>' : ''}
+        ${reply ? replyHtml(event, reply) : ''}
+        ${event.session_id ? `<div class="jumprow"><button class="jump" title="Switch to ${esc(event.terminal || 'the terminal')} where this ${esc(AGENT_NAMES[event.agent] || 'Claude Code')} session runs">Jump to terminal</button></div>` : ''}
+        <div class="err" role="alert" hidden></div>
         <div class="foot">
           <span class="hint"></span>
           <span class="spacer"></span>
@@ -246,6 +267,10 @@
       more.textContent = expanded ? 'Show less' : 'Show more';
       if (expanded) hold();
     });
+    if (reply) wireReply(event, reply);
+    const jump = slot.querySelector('.jump');
+    if (jump) jump.addEventListener('click', () => jumpBack(event, jump));
+    updatePills(pills);
     slot.querySelector('.dismiss').addEventListener('click', () => dismiss());
     slot.querySelector('.snooze').addEventListener('click', () => {
       send({ type: 'nudgeSnooze', id: current && current.id });
@@ -254,13 +279,178 @@
     slot.querySelector('.bubble').addEventListener('mouseenter', hold);
 
     root.classList.remove('hidden');
-    level = -1; // force setLevel to apply
+    if (!switching) level = -1; // force setLevel to apply (a switch keeps the level: the mascot follows the most urgent)
     setLevel(startLevel, waitingMs, false);
     wave();
 
     stopAutoDismiss();
     if (auto > 0) dismissTimer = setTimeout(dismiss, auto * 1000);
-    if (settings.sound) blip(event.kind);
+    if (settings.sound && !quiet) blip(event.kind);
+  }
+
+  // ---------- session switcher ----------
+  // How long Claude has been waiting in that session (wall clock, from the event's time).
+  function waited(ts) {
+    const sec = Math.max(0, Math.round((Date.now() - (Number(ts) || Date.now())) / 1000));
+    if (sec < 60) return `${sec}s`;
+    const min = Math.floor(sec / 60);
+    return min < 60 ? `${min}m` : `${Math.floor(min / 60)}h ${min % 60}m`;
+  }
+
+  function updatePills(list) {
+    sessions = Array.isArray(list) ? list : [];
+    const bubble = slot.querySelector('.bubble');
+    let box = slot.querySelector('.sessions');
+    if (!sessions.length || !bubble || settled) {
+      if (box) box.remove();
+      clearInterval(pillTimer); pillTimer = null;
+      return;
+    }
+    if (!box) {
+      box = document.createElement('div');
+      box.className = 'sessions';
+      box.setAttribute('role', 'tablist');
+      box.setAttribute('aria-label', 'Claude Code sessions waiting on you');
+      bubble.insertBefore(box, bubble.firstChild);
+    }
+    box.innerHTML = sessions.map((p) => {
+      const on = current && p.id === current.id;
+      return `<button class="pill${on ? ' on' : ''}${p.level >= 2 ? ' hot' : ''}" role="tab" aria-selected="${on}" data-key="${esc(p.key)}" title="${esc(p.cwd || p.project || '')}">`
+        + `<i class="dot ${esc(p.kind)}"></i><span class="pname">${esc(p.project || 'session')}</span><small data-ts="${Number(p.ts) || 0}">${waited(p.ts)}</small></button>`;
+    }).join('');
+    box.querySelectorAll('.pill').forEach((b) => b.addEventListener('click', () => {
+      if (b.classList.contains('on')) return;
+      hold();
+      send({ type: 'selectSession', key: b.dataset.key });
+    }));
+    if (!pillTimer) pillTimer = setInterval(() => {
+      slot.querySelectorAll('.pill small[data-ts]').forEach((el) => { el.textContent = waited(el.dataset.ts); });
+    }, 5000);
+  }
+
+  // ---------- jump back ----------
+  // Asks the relay (through the service worker) to bring this session's terminal app to the front.
+  async function jumpBack(event, btn) {
+    const err = slot.querySelector('.err');
+    err.hidden = true;
+    btn.disabled = true;
+    let res;
+    try {
+      res = await chrome.runtime.sendMessage({ type: 'jumpBack', session_id: event.session_id, agent: event.agent });
+    } catch (_) {
+      res = { ok: false, error: 'Nudge was reloaded. Refresh this page, or switch to the terminal yourself.' };
+    }
+    if (!current || current.id !== event.id) return;
+    btn.disabled = false;
+    if (res && res.ok) {
+      if (event.kind === 'done' || event.kind === 'idle') dismiss(); // nothing left to answer: you're on your way
+      return;
+    }
+    hold();
+    err.textContent = (res && res.error) || "Couldn't switch to the terminal.";
+    err.hidden = false;
+  }
+
+  // ---------- reply from the bubble ----------
+  // 'permission' (Allow / Deny) or 'question' (the choices), when the approval hook is waiting on it; else null.
+  function replyKind(event) {
+    if (!event.approvable || !event.tool_use_id || event.decided) return null;
+    if (event.kind === 'permission') return 'permission';
+    if (event.kind === 'question' && (event.options || []).some((q) => (q.choices || []).length)) return 'question';
+    return null;
+  }
+
+  // Same rules as the phone app: one single-select question answers on tap (gold buttons);
+  // several questions or a multi-select one take picks, then "Send answers".
+  const isImmediate = (qs) => qs.length === 1 && !qs[0].multiSelect;
+  const questionKey = (q, i) => q.question || q.header || `Question ${i + 1}`;
+
+  function replyHtml(event, reply) {
+    if (reply === 'permission') {
+      return '<div class="reply"><div class="decide"><button class="btn gold" data-behavior="allow">Allow</button><button class="btn red" data-behavior="deny">Deny</button></div></div>';
+    }
+    const qs = event.options;
+    const immediate = isImmediate(qs);
+    const groups = qs.map((q, i) => {
+      const eyebrow = q.header ? `${q.header}${q.multiSelect ? ' \u00b7 pick any' : ''}` : q.multiSelect ? 'Pick any' : '';
+      return `<div class="q">
+        ${eyebrow ? `<div class="eyebrow">${esc(eyebrow)}</div>` : ''}
+        ${qs.length > 1 && q.question ? `<div class="qtext">${esc(q.question)}</div>` : ''}
+        ${(q.choices || []).map((c, j) => `<button class="btn choice${immediate ? ' gold' : ''}" data-q="${i}" data-c="${j}"${immediate ? '' : ' aria-pressed="false"'}>${esc(c)}</button>`).join('')}
+      </div>`;
+    }).join('');
+    // The list scrolls on short windows; "Send answers" stays outside it, always in view.
+    return `<div class="reply"><div class="qlist">${groups}</div>${immediate ? '' : '<button class="btn gold send" disabled>Send answers</button>'}</div>`;
+  }
+
+  function wireReply(event, reply) {
+    const box = slot.querySelector('.reply');
+    if (reply === 'permission') {
+      box.querySelectorAll('[data-behavior]').forEach((b) => b.addEventListener('click', () => decide(event, { behavior: b.dataset.behavior })));
+      return;
+    }
+    const qs = event.options;
+    const immediate = isImmediate(qs);
+    const picked = qs.map(() => []);
+    const send = box.querySelector('.send');
+    box.querySelectorAll('.choice').forEach((b) => b.addEventListener('click', () => {
+      const i = Number(b.dataset.q);
+      const label = qs[i].choices[Number(b.dataset.c)];
+      if (immediate) return decide(event, { answer: label, answers: { [questionKey(qs[0], 0)]: label } });
+      picked[i] = qs[i].multiSelect ? (picked[i].includes(label) ? picked[i].filter((c) => c !== label) : [...picked[i], label]) : [label];
+      box.querySelectorAll(`.choice[data-q="${i}"]`).forEach((o) => {
+        const on = picked[i].includes(qs[i].choices[Number(o.dataset.c)]);
+        o.classList.toggle('sel', on);
+        o.setAttribute('aria-pressed', String(on));
+      });
+      send.disabled = !picked.every((p) => p.length);
+    }));
+    if (send) send.addEventListener('click', () => {
+      const answers = {};
+      qs.forEach((q, i) => { answers[questionKey(q, i)] = q.multiSelect ? picked[i] : picked[i][0]; });
+      // Exactly one question: keep the single `answer` field alongside `answers`, as the phone does.
+      decide(event, { ...(qs.length === 1 ? { answer: picked[0].join(', ') } : {}), answers });
+    });
+  }
+
+  // Sends the answer through the service worker to the relay. Success settles the bubble; failure keeps the buttons.
+  async function decide(event, payload) {
+    const box = slot.querySelector('.reply');
+    const err = slot.querySelector('.err');
+    const buttons = box ? [...box.querySelectorAll('button')] : [];
+    const before = buttons.map((b) => b.disabled);
+    buttons.forEach((b) => { b.disabled = true; });
+    err.hidden = true;
+    hold();
+    let res;
+    try {
+      res = await chrome.runtime.sendMessage({ type: 'decide', id: event.id, agent: event.agent, session_id: event.session_id, tool_use_id: event.tool_use_id, ...payload });
+    } catch (_) {
+      res = { ok: false, error: 'Nudge was reloaded. Refresh this page or answer in the terminal.' };
+    }
+    if (!current || current.id !== event.id) return; // dismissed meanwhile
+    if (res && res.ok) return settle('Sent to Claude');
+    if (res && res.settled) return settle(res.settled);
+    buttons.forEach((b, i) => { b.disabled = before[i]; });
+    err.textContent = (res && res.error) || 'Could not send. Answer in the terminal.';
+    err.hidden = false;
+  }
+
+  // The answered state: calm mascot, green dot, one line, gone after 1.5 s.
+  function settle(text) {
+    if (!current || settled) return;
+    setLevel(0, 0, false);
+    settled = true;
+    const dot = slot.querySelector('.dot');
+    if (dot) dot.className = 'dot sent';
+    const title = slot.querySelector('.title');
+    if (title) title.textContent = text;
+    slot.querySelectorAll('.sessions, .msg, .opts, .note, .reply, .jumprow, .err, .foot, .timer').forEach((el) => el.remove());
+    clearInterval(pillTimer); pillTimer = null;
+    stopAutoDismiss();
+    wave(1500);
+    clearTimeout(settleTimer);
+    settleTimer = setTimeout(() => dismiss(false), 1500);
   }
 
   function wave(ms = 3500) {
@@ -272,11 +462,11 @@
   }
 
   function setLevel(next, waitingMs, noise) {
-    if (!current) return;
+    if (!current || settled) return;
     const escalating = current.kind === 'question' || current.kind === 'permission';
     if (!escalating) next = 0;
     const hint = slot.querySelector('.hint');
-    if (hint) hint.textContent = escalating ? HINTS[next](Math.round(waitingMs / 1000)) : HINTS[current.kind]();
+    if (hint) hint.textContent = escalating ? HINTS[next](Math.round(waitingMs / 1000), !!replyKind(current)) : HINTS[current.kind]();
     const snooze = slot.querySelector('.snooze');
     if (snooze) snooze.hidden = next === 0;
     if (noise) alarm();
@@ -327,6 +517,10 @@
     const id = current && current.id;
     stopAutoDismiss();
     clearTimeout(waveTimer);
+    clearTimeout(settleTimer);
+    settled = false;
+    sessions = [];
+    clearInterval(pillTimer); pillTimer = null;
     root.classList.add('hidden');
     root.classList.remove('lvl-1', 'lvl-2', 'lvl-3');
     root.style.transform = '';

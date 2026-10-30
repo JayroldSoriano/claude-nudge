@@ -10,6 +10,7 @@
   <a href="https://nudge-mascot.vercel.app/">Website</a> ·
   <a href="#install">Install</a> ·
   <a href="#escalation">Escalation</a> ·
+  <a href="#reply-from-the-bubble">Reply</a> ·
   <a href="https://nudge-mascot.vercel.app/privacy">Privacy</a> ·
   <a href="https://github.com/sponsors/JayroldSoriano">Sponsor</a>
 </p>
@@ -57,7 +58,9 @@ Requires Node 18+ and Chrome 116+.
 
 Nudge appears on the active tab and follows you: switch tabs or windows and it re-appears there with
 the same countdown. Dismissing it in one tab clears it everywhere. Answering in the terminal (which fires
-`PostToolUse` or `UserPromptSubmit`) resolves it everywhere. If a tab can't run content scripts
+`PostToolUse` or `UserPromptSubmit`, or, for a permission or question the approval hook was waiting on, ends that
+hook: a Deny fires no `PostToolUse`, so the relay watches for the hook going away) resolves it everywhere, also
+in a browser that was disconnected at the time (the relay tells it on reconnect). If a tab can't run content scripts
 (`chrome://` pages, the Web Store), a system notification is used instead. Press Esc, click **Got it**,
 or click Nudge to dismiss.
 
@@ -79,6 +82,26 @@ session never replaces a blocking question; it becomes a system notification.
 
 Nudge never blocks the page: only the bubble and the mascot catch clicks. Sound needs you to have
 interacted with the page since it loaded (Chrome's autoplay policy); the visual tiers don't depend on it.
+
+## Reply from the bubble
+
+`npx nudge-mascot setup` installs the approval hooks (`PermissionRequest`, and `PreToolUse` on
+`AskUserQuestion`, both with Claude Code's 600 s hook timeout), so you can answer Claude without going back
+to the terminal. Installs from before this change get them on the next `setup`, or from `npx nudge-mascot pair`.
+
+A permission shows **Allow** and **Deny**; a question shows its choices as buttons, grouped under each
+question. One question answers on tap; several questions, or a multi-select one, take your picks and a **Send answers** button. The bubble says "Sent to Claude" and
+goes away everywhere, and a paired phone marks it answered too. Answer on the phone instead and the bubble
+says "Answered on your phone". The terminal prompt still works either way; answer there and the bubble goes away,
+or, if you tap it in the same moment, it says "Answered in the terminal". With several questions, the relay
+only accepts an answer for every one of them. Without the approval hook, permissions show "Answer in the
+terminal"; without its `PreToolUse` half, questions show their choices as labels only and the hook doesn't wait. Try it with **Preview nudge** or the popup's test buttons
+(`npx nudge-mascot test approve`, `test question`, `test questions`).
+
+The approval hook only waits when something can answer: the relay tells it whether the extension is
+connected or a phone is paired. With Chrome closed (or the extension off, or the relay down) and no phone,
+it returns at once and the terminal prompt appears immediately, exactly as without Nudge. `npx nudge-mascot
+unpair` keeps the approval hooks for the bubble; `uninstall` removes them.
 
 ## Settings (extension popup)
 
