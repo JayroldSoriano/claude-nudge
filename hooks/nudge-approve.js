@@ -46,7 +46,14 @@ function answersFor(questions, d) {
   for await (const chunk of process.stdin) raw += chunk;
   let hook;
   try { hook = JSON.parse(raw); } catch (_) { return; }
-  if (!hook.session_id || !hook.tool_use_id) return;
+  if (!hook.session_id) return;
+  // Claude Code 2.1.280 sends PermissionRequest without tool_use_id. Derive a stable one from what identifies the
+  // request, and send it to the relay, so the phone's decision comes back under the same key.
+  if (!hook.tool_use_id) {
+    const basis = `${hook.session_id}|${hook.prompt_id || ''}|${hook.tool_name || ''}|${JSON.stringify(hook.tool_input || {})}`;
+    hook.tool_use_id = 'pr-' + require('crypto').createHash('sha1').update(basis).digest('hex').slice(0, 16);
+    raw = JSON.stringify(hook);
+  }
   const isQuestion = hook.hook_event_name === 'PreToolUse' && hook.tool_name === 'AskUserQuestion';
   if (!isQuestion && hook.hook_event_name !== 'PermissionRequest') return;
 

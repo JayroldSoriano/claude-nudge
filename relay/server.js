@@ -134,8 +134,9 @@ function normalize(hook) {
     case 'Notification': {
       switch (hook.notification_type) {
         case 'permission_prompt':
-          // The approval hook already emitted this request with the tool details; skip the duplicate.
-          if (Date.now() - (lastPermission.get(base.session_id) || 0) < 5000) return null;
+          // The approval hook already emitted this request with the tool details and is still waiting on it
+          // (the terminal shows its prompt a few seconds later, in parallel): skip the duplicate.
+          if (pending.get(base.session_id) === 'permission' && Date.now() - (lastPermission.get(base.session_id) || 0) < 600000) return null;
           pending.set(base.session_id, 'permission');
           return { ...base, kind: 'permission', title: 'Claude needs permission', message: clip(hook.message || 'Claude is waiting for your approval.', 600) };
         case 'idle_prompt':
