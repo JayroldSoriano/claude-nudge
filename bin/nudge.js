@@ -5,6 +5,8 @@
 //   npx nudge-mascot status     relay health + hook status
 //   npx nudge-mascot test [kind] send a test nudge (question | permission | done | resolved)
 //   npx nudge-mascot uninstall  remove hooks, launch agent, and ~/.claude-nudge
+//   npx nudge-mascot pair [--relay URL]   pair a phone through the hosted relay (installs the approval hook)
+//   npx nudge-mascot unpair     forget the hosted relay and remove the approval hook
 'use strict';
 const fs = require('fs');
 const os = require('os');
@@ -23,6 +25,9 @@ const LAUNCHD_LABEL = 'com.claude-nudge.relay';
 const PLIST = path.join(HOME, 'Library', 'LaunchAgents', `${LAUNCHD_LABEL}.plist`);
 const SYSTEMD_UNIT = path.join(HOME, '.config', 'systemd', 'user', 'claude-nudge.service');
 const STORE_URL = process.env.CLAUDE_NUDGE_STORE_URL || ''; // set once the Web Store listing is live
+const CLOUD = path.join(INSTALL_DIR, 'cloud.json'); // { relay, userId, laptopToken } once a phone is paired
+const APPROVE = path.join(INSTALL_DIR, 'nudge-approve.js');
+const DEFAULT_RELAY = process.env.CLAUDE_NUDGE_RELAY || 'https://relay.nudgemascot.com';
 
 const HOOKS = {
   Stop: null,
@@ -67,16 +72,34 @@ function installHooks() {
   return added;
 }
 
-function removeHooks() {
+function removeHooks(pattern = /nudge-(hook\.sh|approve\.js)$/) {
   const settings = readSettings();
   if (!settings.hooks) return;
   for (const event of Object.keys(settings.hooks)) {
     settings.hooks[event] = settings.hooks[event]
-      .map((g) => ({ ...g, hooks: (g.hooks || []).filter((h) => !/nudge-hook\.sh$/.test(h.command || '')) }))
+      .map((g) => ({ ...g, hooks: (g.hooks || []).filter((h) => !pattern.test(h.command || '')) }))
       .filter((g) => g.hooks.length);
     if (!settings.hooks[event].length) delete settings.hooks[event];
   }
   fs.writeFileSync(SETTINGS, JSON.stringify(settings, null, 2) + '\n');
+}
+
+// The approval hook waits for a phone or bubble decision, so it gets Claude Code's full 600s timeout.
+function installApprovalHook() {
+  const settings = readSettings();
+  if (fs.existsSync(SETTINGS)) fs.copyFileSync(SETTINGS, SETTINGS + '.bak-claude-nudge');
+  settings.hooks = settings.hooks || {};
+  const command = `"${process.execPath}" "${APPROVE}"`;
+  const list = (settings.hooks.PermissionRequest = settings.hooks.PermissionRequest || []);
+  for (const g of list) if (g.hooks) g.hooks = g.hooks.filter((h) => !/nudge-approve\.js"?$/.test(h.command || '') || h.command === command);
+  if (!list.some((g) => (g.hooks || []).some((h) => h.command === command))) {
+    list.push({ hooks: [{ type: 'command', command, timeout: 600 }] });
+  }
+  fs.writeFileSync(SETTINGS, JSON.stringify(settings, null, 2) + '\n');
+}
+
+function readCloud() {
+  try { return JSON.parse(fs.readFileSync(CLOUD, 'utf8')); } catch (_) { return null; }
 }
 
 function installService() {
@@ -164,6 +187,7 @@ async function setup() {
   copyDir(path.join(PKG, 'extension'), path.join(INSTALL_DIR, 'extension'));
   fs.copyFileSync(path.join(PKG, 'hooks', 'nudge-hook.sh'), HOOK);
   fs.chmodSync(HOOK, 0o755);
+  fs.copyFileSync(path.join(PKG, 'hooks', 'nudge-approve.js'), APPROVE);
   ok(`files installed in ${INSTALL_DIR}`);
 
   const added = installHooks();
@@ -192,6 +216,44 @@ async function status() {
   if (present.length === Object.keys(HOOKS).length) ok(`hooks installed (${present.join(', ')})`);
   else warn(`hooks missing: ${Object.keys(HOOKS).filter((e) => !present.includes(e)).join(', ') || 'none'}; run: npx nudge-mascot setup`);
   if (h && h.clients === 0) warn('no extension connected: load it from chrome://extensions and click its Reload icon');
+  const cloud = readCloud();
+  if (cloud) {
+    ok(`phone pairing on ${cloud.relay} (user ${cloud.userId})`);
+    const approve = (s.hooks && s.hooks.PermissionRequest || []).some((g) => (g.hooks || []).some((hk) => /nudge-approve\.js"?$/.test(hk.command || '')));
+    if (approve) ok('approval hook installed (PermissionRequest)');
+    else warn('approval hook missing; run: npx nudge-mascot pair');
+  } else {
+    log('  · no phone paired (optional): npx nudge-mascot pair');
+  }
+}
+
+async function pair() {
+  const i = process.argv.indexOf('--relay');
+  const relay = (i > 0 && process.argv[i + 1] ? process.argv[i + 1] : DEFAULT_RELAY).replace(/\/$/, '');
+  log(`\nNudge · pair a phone via ${relay}\n`);
+  let body;
+  try {
+    const res = await fetch(`${relay}/pair/start`, { method: 'POST', signal: AbortSignal.timeout(8000) });
+    body = await res.json();
+    if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+  } catch (e) {
+    warn(`could not reach the relay: ${e.message}`);
+    return;
+  }
+  fs.mkdirSync(INSTALL_DIR, { recursive: true });
+  fs.writeFileSync(CLOUD, JSON.stringify({ relay: body.relay || relay, userId: body.userId, laptopToken: body.laptopToken, pairedAt: new Date().toISOString() }, null, 2) + '\n', { mode: 0o600 });
+  ok(`laptop token saved to ${CLOUD}`);
+  if (!fs.existsSync(APPROVE)) fs.copyFileSync(path.join(PKG, 'hooks', 'nudge-approve.js'), APPROVE);
+  installApprovalHook();
+  ok('approval hook added (PermissionRequest, waits up to 10 minutes for the phone)');
+  log(`\n  Open the Nudge app, set the relay to ${body.relay || relay}, and enter this code within ${Math.round((body.expiresInSeconds || 600) / 60)} minutes:\n`);
+  log(`      ${body.pairCode}\n`);
+  log('Restart any running Claude Code session so the approval hook loads. Test with: npx nudge-mascot test approve\n');
+}
+
+function unpair() {
+  if (fs.existsSync(CLOUD)) { fs.unlinkSync(CLOUD); ok('hosted relay forgotten'); } else log('  · nothing was paired');
+  removeHooks(/nudge-approve\.js"?$/); ok('approval hook removed');
 }
 
 function test(kind = 'question') {
@@ -218,13 +280,15 @@ function start() {
 
 const cmd = process.argv[2] || 'help';
 ({
-  setup, start, status, uninstall,
+  setup, start, status, uninstall, pair, unpair,
   test: () => test(process.argv[3]),
   help: () => log(`Nudge
 
   npx nudge-mascot setup        install hooks + relay, then load the extension
   npx nudge-mascot start        run the relay in the foreground
   npx nudge-mascot status       relay health and hook status
-  npx nudge-mascot test [kind]  question | permission | done | resolved
+  npx nudge-mascot test [kind]  question | permission | approve | done | resolved
+  npx nudge-mascot pair         pair the Nudge phone app (optional; --relay URL to override)
+  npx nudge-mascot unpair       forget the phone pairing
   npx nudge-mascot uninstall    remove everything this tool installed`),
 }[cmd] || (() => { log(`unknown command: ${cmd}`); process.exit(1); }))();

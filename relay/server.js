@@ -7,6 +7,8 @@
 const http = require('http');
 const crypto = require('crypto');
 const path = require('path');
+const fs = require('fs');
+const os = require('os');
 
 const HOST = '127.0.0.1';
 const PORT = Number(process.env.CLAUDE_NUDGE_PORT || 47831);
@@ -17,6 +19,28 @@ const recent = [];
 const sockets = new Set();
 const pending = new Map(); // session_id -> kind of the nudge Claude is blocked on (question/permission)
 let nextId = 1;
+
+// Optional hosted relay (phone app). Written by `npx nudge-mascot pair`; read on every use so pairing
+// takes effect without a restart. Nothing here runs unless the file exists.
+const CLOUD_FILE = process.env.CLAUDE_NUDGE_CLOUD || path.join(os.homedir(), '.claude-nudge', 'cloud.json');
+const decisions = new Map(); // `${session_id}:${tool_use_id}` -> decision from the bubble or the phone
+const lastPermission = new Map(); // session_id -> ts of the last PermissionRequest event (dedupes the Notification that follows it)
+
+function cloud() {
+  try {
+    const c = JSON.parse(fs.readFileSync(CLOUD_FILE, 'utf8'));
+    return c && c.relay && c.laptopToken ? c : null;
+  } catch (_) { return null; }
+}
+
+function toolSummary(name, input) {
+  if (!input || typeof input !== 'object') return '';
+  if (name === 'Bash') return input.command || '';
+  if (input.file_path) return input.file_path;
+  if (input.url) return input.url;
+  if (input.pattern) return input.pattern;
+  try { return JSON.stringify(input); } catch (_) { return ''; }
+}
 
 // ---------- event normalization ----------
 
@@ -75,9 +99,25 @@ function normalize(hook) {
       };
     }
 
+    // Only arrives when the approval hook is installed (npx nudge-mascot pair). Carries what a phone needs to answer.
+    case 'PermissionRequest':
+      pending.set(base.session_id, 'permission');
+      lastPermission.set(base.session_id, Date.now());
+      return {
+        ...base,
+        kind: 'permission',
+        title: 'Claude needs permission',
+        message: clip(`${hook.tool_name || 'Tool'}: ${toolSummary(hook.tool_name, hook.tool_input)}`, 600),
+        tool_name: hook.tool_name || '',
+        tool_use_id: hook.tool_use_id || '',
+        approvable: true,
+      };
+
     case 'Notification': {
       switch (hook.notification_type) {
         case 'permission_prompt':
+          // The approval hook already emitted this request with the tool details; skip the duplicate.
+          if (Date.now() - (lastPermission.get(base.session_id) || 0) < 5000) return null;
           pending.set(base.session_id, 'permission');
           return { ...base, kind: 'permission', title: 'Claude needs permission', message: clip(hook.message || 'Claude is waiting for your approval.', 600) };
         case 'idle_prompt':
@@ -103,6 +143,50 @@ function emit(event) {
   const frame = encodeFrame(JSON.stringify({ type: 'event', event }));
   for (const s of sockets) safeWrite(s, frame);
   log(`event #${event.id} ${event.kind} [${event.project}] -> ${sockets.size} client(s)`);
+  forward(event);
+}
+
+// Mirror the event to the hosted relay when a phone is paired. Fire-and-forget; the bubble never waits on it.
+function forward(event) {
+  const c = cloud();
+  if (!c || typeof fetch !== 'function') return;
+  fetch(`${c.relay}/events`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${c.laptopToken}` },
+    body: JSON.stringify({ event }),
+    signal: AbortSignal.timeout(5000),
+  }).then((r) => { if (!r.ok) log(`cloud rejected event #${event.id}: HTTP ${r.status}`); })
+    .catch((e) => log(`cloud forward failed: ${e.message}`));
+}
+
+// A decision for the approval hook: from the bubble (POST /decision) or, when paired, from the phone via the cloud.
+async function awaitDecision(sessionId, toolUseId, waitMs) {
+  const key = `${sessionId}:${toolUseId}`;
+  const deadline = Date.now() + waitMs;
+  const c = cloud();
+  for (;;) {
+    if (decisions.has(key)) return decisions.get(key);
+    const left = deadline - Date.now();
+    if (left <= 0) return null;
+    if (c && typeof fetch === 'function') {
+      try {
+        const wait = Math.min(25000, left);
+        const r = await fetch(`${c.relay}/decisions?session_id=${encodeURIComponent(sessionId)}&tool_use_id=${encodeURIComponent(toolUseId)}&wait=${wait}`, {
+          headers: { Authorization: `Bearer ${c.laptopToken}` },
+          signal: AbortSignal.timeout(wait + 5000),
+        });
+        if (r.status === 200) {
+          const d = (await r.json()).decision;
+          if (d) { decisions.set(key, d); return d; }
+        }
+      } catch (e) {
+        log(`cloud poll failed: ${e.message}`);
+        await new Promise((res) => setTimeout(res, 2000));
+      }
+    } else {
+      await new Promise((res) => setTimeout(res, 500));
+    }
+  }
 }
 
 // ---------- minimal WebSocket server ----------
@@ -194,7 +278,7 @@ const server = http.createServer((req, res) => {
   if (!isTrustedOrigin(req)) return json(403, { error: 'forbidden origin' });
 
   if (req.method === 'GET' && url.pathname === '/health') {
-    return json(200, { ok: true, clients: sockets.size, events: recent.length, port: PORT });
+    return json(200, { ok: true, clients: sockets.size, events: recent.length, port: PORT, cloud: !!cloud() });
   }
   if (req.method === 'GET' && url.pathname === '/events') {
     return json(200, { events: recent });
@@ -213,6 +297,7 @@ const server = http.createServer((req, res) => {
           permission: { ...common, hook_event_name: 'Notification', notification_type: 'permission_prompt', message: 'Claude needs your permission to use Bash' },
           done: { ...common, hook_event_name: 'Stop', last_assistant_message: 'Test run finished. All 42 tests pass and the branch is ready for review.' },
           resolved: { ...common, hook_event_name: 'UserPromptSubmit' },
+          approve: { ...common, hook_event_name: 'PermissionRequest', tool_name: 'Bash', tool_use_id: `test-${Date.now()}`, tool_input: { command: 'npm publish --access public' } },
         };
         if (!samples[kind]) return json(400, { error: 'unknown kind' });
         const event = normalize(samples[kind]);
@@ -224,7 +309,43 @@ const server = http.createServer((req, res) => {
       const event = normalize(hook);
       if (event) emit(event);
       else log(`ignored ${hook.hook_event_name || '?'}${hook.notification_type ? '/' + hook.notification_type : ''}${hook.tool_name ? '/' + hook.tool_name : ''}`);
-      return json(200, { ok: true, emitted: !!event });
+      // canDecide tells the approval hook whether anything can answer (a paired phone); otherwise it won't wait.
+      return json(200, { ok: true, emitted: !!event, canDecide: !!cloud() });
+    });
+    return;
+  }
+  // Long poll used by hooks/nudge-approve.js. 200 with the decision, or 204 when `wait` ms pass without one.
+  if (req.method === 'GET' && url.pathname === '/decision') {
+    const sid = url.searchParams.get('session_id') || '', tid = url.searchParams.get('tool_use_id') || '';
+    if (!sid || !tid) return json(400, { error: 'session_id and tool_use_id required' });
+    const wait = Math.min(Number(url.searchParams.get('wait') || 0), 30000);
+    awaitDecision(sid, tid, wait).then((d) => {
+      if (d) return json(200, { decision: d });
+      res.writeHead(204); res.end();
+    });
+    return;
+  }
+  // A decision made in the bubble (extension only, by the origin check). Mirrored to the cloud so phones dismiss it.
+  if (req.method === 'POST' && url.pathname === '/decision') {
+    let body = '';
+    req.setEncoding('utf8');
+    req.on('data', (c) => { body += c; if (body.length > 1e5) req.destroy(); });
+    req.on('end', () => {
+      let d;
+      try { d = JSON.parse(body); } catch (_) { return json(400, { error: 'invalid json' }); }
+      if (!d.session_id || !d.tool_use_id || !(d.behavior === 'allow' || d.behavior === 'deny' || d.answer)) return json(400, { error: 'session_id, tool_use_id and behavior|answer required' });
+      const decision = { ...d, by: 'browser', ts: Date.now() };
+      decisions.set(`${d.session_id}:${d.tool_use_id}`, decision);
+      const c = cloud();
+      if (c && typeof fetch === 'function') {
+        fetch(`${c.relay}/decisions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${c.laptopToken.replace(/^([a-z2-7]+)\.l/, '$1.b')}` },
+          body: JSON.stringify(decision),
+          signal: AbortSignal.timeout(5000),
+        }).catch(() => {});
+      }
+      return json(200, { ok: true });
     });
     return;
   }
