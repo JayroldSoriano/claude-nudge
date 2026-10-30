@@ -4,6 +4,7 @@
   "description": "Nudge: a pixel mascot waves in Chrome when Claude Code has a question, needs permission, or is done.",
   "scripts": {
     "start": "node relay/server.js",
+    "test": "node relay/adapters/test.js",
     "setup": "node bin/nudge.js setup",
     "status": "node bin/nudge.js status",
     "test-nudge": "node bin/nudge.js test",
@@ -34,6 +35,10 @@
   "files": [
     "bin",
     "relay/server.js",
+    "relay/adapters/index.js",
+    "relay/adapters/claude-code.js",
+    "relay/adapters/codex.js",
+    "relay/adapters/gemini.js",
     "relay/package.json",
     "hooks/nudge-hook.sh",
     "extension",

@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 'use strict';
-// Nudge relay: receives Claude Code hook payloads over HTTP (from hooks/nudge-hook.sh)
-// and pushes normalized events to the Chrome extension over a WebSocket.
+// Nudge relay: receives coding-agent hook payloads over HTTP (from hooks/nudge-hook.sh: Claude Code, Codex,
+// Gemini CLI), normalizes them per agent (relay/adapters/), and pushes the events to the Chrome extension
+// over a WebSocket.
 // Zero dependencies. Binds to 127.0.0.1 only.
 
 const http = require('http');
@@ -10,6 +11,7 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const pairing = require('./pairing');
+const { adapterFor, createContext, sessionKey, incompleteDecision: incomplete, DEFAULT_AGENT } = require('./adapters');
 
 const HOST = '127.0.0.1';
 const PORT = Number(process.env.CLAUDE_NUDGE_PORT || 47831);
@@ -17,16 +19,17 @@ const MAX_RECENT = 25;
 const PING_INTERVAL_MS = 20000; // keeps the MV3 service worker alive (Chrome extends SW life on WS activity)
 
 const recent = [];
-const sockets = new Set();
-const pending = new Map(); // session_id -> kind of the nudge Claude is blocked on (question/permission)
-// Time-based so ids stay unique across relay restarts (the hosted relay keeps events from earlier runs).
-let nextId = Date.now();
+const sockets = new Set(); // extension sockets that sent the secret: they get every event and decision
+const lockedSockets = new Set(); // extension sockets without it: a hello saying so, nothing else
+// Per-agent hook adapters (relay/adapters/<agent>.js) and the state they share: pending, lastPermission, dedupe, ids.
+// questionHookInstalled: questions are answerable from the bubble or the phone only when nudge-approve.js is
+// installed for PreToolUse/AskUserQuestion.
+const ctx = createContext({ questionHookInstalled: pairing.questionHookInstalled });
 
 // Optional hosted relay (phone app). Written by `npx nudge-mascot pair`; read on every use so pairing
 // takes effect without a restart. Nothing here runs unless the file exists.
 const CLOUD_FILE = process.env.CLAUDE_NUDGE_CLOUD || path.join(os.homedir(), '.claude-nudge', 'cloud.json');
-const decisions = new Map(); // `${session_id}:${tool_use_id}` -> decision from the bubble or the phone
-const lastPermission = new Map(); // session_id -> ts of the last PermissionRequest event (dedupes the Notification that follows it)
+const decisions = new Map(); // `${agent}:${session_id}:${tool_use_id}` -> decision from the bubble or the phone
 
 function cloud() {
   try {
@@ -35,151 +38,129 @@ function cloud() {
   } catch (_) { return null; }
 }
 
-// Both nudge-hook.sh and nudge-approve.js post the same PreToolUse payload; emit it once.
-const seenToolUse = new Map(); // tool_use_id -> ts
-function isDuplicate(toolUseId) {
-  const now = Date.now();
-  for (const [k, t] of seenToolUse) if (now - t > 60000) seenToolUse.delete(k);
-  if (seenToolUse.has(toolUseId)) return true;
-  seenToolUse.set(toolUseId, now);
-  return false;
+// ---------- local auth ----------
+// 127.0.0.1 is reachable by every process and user on the machine, so everything but /health needs the per-install
+// secret (relay/secret.js): the hooks and the CLI read it from ~/.claude-nudge/secret, the extension has it pasted
+// into its popup. Re-read from disk whenever a request fails, so a secret minted after start works without a restart.
+let SECRET = null;
+try { SECRET = secret.ensure().secret; } catch (e) { console.error(`[nudge] could not create ${secret.FILE}: ${e.message}`); }
+function authorized(given) {
+  if (!given) return false;
+  if (secret.matches(given, SECRET)) return true;
+  const fresh = secret.read();
+  if (!fresh || fresh === SECRET) return false;
+  SECRET = fresh;
+  return secret.matches(given, SECRET);
 }
-
-function toolSummary(name, input) {
-  if (!input || typeof input !== 'object') return '';
-  if (name === 'Bash') return input.command || '';
-  if (input.file_path) return input.file_path;
-  if (input.url) return input.url;
-  if (input.pattern) return input.pattern;
-  try { return JSON.stringify(input); } catch (_) { return ''; }
-}
+const fromExtension = (req) => String(req.headers.origin || '').startsWith('chrome-extension://');
+const UNAUTHORIZED = { error: 'Nudge needs its connection code. Run `npx nudge-mascot status` and paste the code into the extension popup.', auth: 'secret' };
+// What an extension without the secret may see of an event: that something happened, not what.
+const redact = (e) => ({ id: e.id, ts: e.ts, kind: e.kind, title: e.title, agent: e.agent, message: e.message ? '(connect to see)' : '' });
 
 // ---------- event normalization ----------
-
-function clip(text, max) {
-  text = String(text || '').trim();
-  return text.length > max ? text.slice(0, max - 1) + '…' : text;
+// Each agent's adapter maps its hook payload into the shared event shape (see relay/adapters/index.js).
+// Returns undefined for an unknown agent, null for a payload the adapter ignores.
+function normalize(hook, agent) {
+  const adapter = adapterFor(agent);
+  if (!adapter) return undefined;
+  return adapter.normalize(hook, ctx);
 }
 
-function normalize(hook) {
-  if (!hook || typeof hook !== 'object') return null;
-  const base = {
-    id: nextId++,
-    ts: Date.now(),
-    session_id: hook.session_id || '',
-    project: hook.cwd ? path.basename(hook.cwd) : '',
-    cwd: hook.cwd || '',
-    hook_event: hook.hook_event_name || '',
-  };
-
-  const resolved = () => {
-    pending.delete(base.session_id);
-    return { ...base, kind: 'resolved', title: 'Resolved', message: '' };
-  };
-
-  switch (hook.hook_event_name) {
-    case 'Stop':
-      pending.delete(base.session_id);
-      return {
-        ...base,
-        kind: 'done',
-        title: 'Claude is done',
-        message: clip(hook.last_assistant_message || 'Finished working. Come take a look.', 1200),
-      };
-
-    // The user acted in the terminal: answered a question, approved a tool, or typed a prompt.
-    case 'UserPromptSubmit':
-      return resolved();
-    case 'PostToolUse':
-      if (hook.tool_name === 'AskUserQuestion' || pending.has(base.session_id)) return resolved();
-      return null;
-
-    case 'PreToolUse': {
-      if (hook.tool_name !== 'AskUserQuestion') return null;
-      const questions = (hook.tool_input && hook.tool_input.questions) || [];
-      const text = questions.map((q) => q.question).filter(Boolean).join('\n\n');
-      if (hook.tool_use_id && isDuplicate(hook.tool_use_id)) return null;
-      pending.set(base.session_id, 'question');
-      return {
-        ...base,
-        kind: 'question',
-        title: 'Claude has a question',
-        message: clip(text || 'Claude is waiting for your answer.', 1200),
-        tool_name: 'AskUserQuestion',
-        tool_use_id: hook.tool_use_id || '',
-        approvable: !!hook.tool_use_id, // answerable from the phone when the approval hook is waiting
-        options: questions.map((q) => ({
-          header: q.header || '',
-          question: q.question || '',
-          multiSelect: !!q.multiSelect,
-          choices: (q.options || []).map((o) => o.label).filter(Boolean),
-        })),
-      };
-    }
-
-    // Only arrives when the approval hook is installed (npx nudge-mascot pair). Carries what a phone needs to answer.
-    case 'PermissionRequest':
-      pending.set(base.session_id, 'permission');
-      lastPermission.set(base.session_id, Date.now());
-      return {
-        ...base,
-        kind: 'permission',
-        title: 'Claude needs permission',
-        message: clip(`${hook.tool_name || 'Tool'}: ${toolSummary(hook.tool_name, hook.tool_input)}`, 600),
-        tool_name: hook.tool_name || '',
-        tool_use_id: hook.tool_use_id || '',
-        approvable: true,
-      };
-
-    case 'Notification': {
-      switch (hook.notification_type) {
-        case 'permission_prompt':
-          // The approval hook already emitted this request with the tool details and is still waiting on it
-          // (the terminal shows its prompt a few seconds later, in parallel): skip the duplicate.
-          if (pending.get(base.session_id) === 'permission' && Date.now() - (lastPermission.get(base.session_id) || 0) < 600000) return null;
-          pending.set(base.session_id, 'permission');
-          return { ...base, kind: 'permission', title: 'Claude needs permission', message: clip(hook.message || 'Claude is waiting for your approval.', 600) };
-        case 'idle_prompt':
-          return { ...base, kind: 'idle', title: 'Claude is waiting', message: clip(hook.message || 'Claude is waiting for your input.', 600) };
-        case 'agent_needs_input':
-          pending.set(base.session_id, 'question');
-          return { ...base, kind: 'question', title: 'Claude needs input', message: clip(hook.message || 'Claude is waiting for your input.', 600) };
-        case 'agent_completed':
-          return { ...base, kind: 'done', title: 'Claude is done', message: clip(hook.message || 'Finished working.', 600) };
-        default:
-          return null;
-      }
-    }
-
-    default:
-      return null;
-  }
-}
-
-// A fake hook payload of the given kind, normalized like a real one. `undefined` for an unknown kind.
+// A fake hook payload of the given kind from the agent's adapter (its samples()), normalized like a real one.
+// `undefined` for an unknown agent or a kind that agent has no sample for (only Claude Code has `approve` and
+// `questions`). jump / jump-unknown are the agent's `done` with a message about the Jump button.
 // phoneDelay=N: the paired phone raises its notification N seconds later (time to lock the screen).
-function testEvent(kind, phoneDelay) {
-  const common = { cwd: process.cwd(), session_id: 'test' };
-  const samples = {
-    question: { ...common, hook_event_name: 'PreToolUse', tool_name: 'AskUserQuestion', tool_use_id: `test-q-${Date.now()}`,
-      tool_input: { questions: [{ header: 'Approach', question: 'This is a test nudge. Which approach should I take for the auth refactor?', options: [{ label: 'Keep sessions' }, { label: 'Move to JWT' }] }] } },
-    permission: { ...common, hook_event_name: 'Notification', notification_type: 'permission_prompt', message: 'Claude needs your permission to use Bash' },
-    done: { ...common, hook_event_name: 'Stop', last_assistant_message: 'Test run finished. All 42 tests pass and the branch is ready for review.' },
-    resolved: { ...common, hook_event_name: 'UserPromptSubmit' },
-    approve: { ...common, hook_event_name: 'PermissionRequest', tool_name: 'Bash', tool_use_id: `test-${Date.now()}`, tool_input: { command: 'npm publish --access public' } },
-  };
-  if (!samples[kind]) return undefined;
-  const event = normalize(samples[kind]);
-  if (event && phoneDelay > 0) event.notifyAfter = Math.min(phoneDelay, 60);
+// Test sessions are "test" or "test-…"; POST /decision answers them without a hook behind them.
+const JUMP_MESSAGES = {
+  jump: 'Test nudge for Jump back. Click "Jump to terminal" to switch to the terminal this session runs in.',
+  'jump-unknown': 'Test nudge from a session whose terminal Nudge does not know. "Jump to terminal" explains why it cannot switch.',
+};
+function testEvent(kind, phoneDelay, { session_id = 'test', cwd = process.cwd(), agent = DEFAULT_AGENT } = {}) {
+  const adapter = adapterFor(agent);
+  const samples = adapter && adapter.samples ? adapter.samples({ cwd, session_id }) : {};
+  const sample = samples[JUMP_MESSAGES[kind] ? 'done' : kind];
+  if (!sample) return undefined;
+  const event = adapter.normalize(sample, ctx);
+  if (!event) return event;
+  event.test = true;
+  if (JUMP_MESSAGES[kind]) event.message = JUMP_MESSAGES[kind];
+  // No hook behind it; POST /decision accepts session "test" anyway. Claude Code only: other agents' requests
+  // can't be answered from the bubble, so their previews shouldn't offer it either.
+  if (event.tool_use_id && event.agent === DEFAULT_AGENT) event.approvable = true;
+  if (phoneDelay > 0) event.notifyAfter = Math.min(phoneDelay, 60);
   return event;
 }
 
+// The events a /test (or a phone's test command) emits: one, or three sessions' worth for "multi".
+// `terminal` is the caller's terminal (the CLI sends its own, like the hooks do); without one, "jump" uses a
+// stand-in (Terminal on macOS) so the button can be previewed from the popup.
+// Each agent gets its own test sessions ("test", "test-api" for Claude Code; "test-codex", "test-codex-api" for
+// Codex), so one agent's test never resolves another's. Claude Code keeps plain "test", which the hosted relay and
+// the popup's Preview nudge already use.
+const testSession = (agent, suffix) => ['test', agent === DEFAULT_AGENT ? '' : agent, suffix || ''].filter(Boolean).join('-');
+function testEvents(kind, phoneDelay, terminal, agent = DEFAULT_AGENT) {
+  if (!adapterFor(agent)) return undefined;
+  const remember = (sid, fallback) => {
+    const key = sessionKey(agent, sid);
+    if (terminal) focus.remember(key, terminal);
+    else if (fallback && !focus.get(key)) focus.remember(key, process.platform === 'darwin' ? { terminal: 'Apple_Terminal', terminal_session: '', terminal_bundle: '', tmux: '', tmux_pane: '', terminal_window: '' } : { terminal: 'gnome-terminal', terminal_session: '', terminal_bundle: '', tmux: '', tmux_pane: '', terminal_window: '' });
+  };
+  if (kind === 'multi') {
+    // Three projects blocked at once, waiting 7 min, 3 min and 40 s: previews the session switcher.
+    const now = Date.now();
+    return [['question', '', 'web-app', 7 * 60e3], ['approve', 'api', 'api-server', 3 * 60e3], ['permission', 'docs', 'docs-site', 40e3]]
+      .map(([k, suffix, project, ago]) => {
+        const sid = testSession(agent, suffix);
+        remember(sid, true);
+        const event = testEvent(k, phoneDelay, { session_id: sid, cwd: path.join(os.homedir(), 'code', project), agent });
+        if (event) event.ts = now - ago;
+        return event;
+      }).filter(Boolean);
+  }
+  if (kind === 'jump-unknown') {
+    const sid = testSession(agent, 'unknown');
+    focus.forget(sessionKey(agent, sid));
+    const event = testEvent(kind, phoneDelay, { session_id: sid, agent });
+    return event === undefined ? undefined : [event].filter(Boolean);
+  }
+  const sid = testSession(agent);
+  remember(sid, kind === 'jump');
+  const event = testEvent(kind, phoneDelay, { session_id: sid, agent });
+  return event === undefined ? undefined : [event].filter(Boolean);
+}
+const isTestSession = (sid) => /^test(-|$)/.test(sid);
+
+// What the relay remembers about requests and sessions, beyond `recent` (which only holds the last 25 events):
+const requests = new Map(); // decision key -> the approvable question/permission event (validates answers, B2's resolved)
+const waitingOn = new Map(); // session key -> id of its latest question/permission event, until resolved or done
+const ended = new Map(); // session key -> { id, kind, tool_use_id } of its last resolved/done event (sent in the hello)
+const capped = (map, max) => { while (map.size > max) map.delete(map.keys().next().value); };
+
+function track(event) {
+  const key = sessionKey(event.agent, event.session_id);
+  if (event.kind === 'question' || event.kind === 'permission') {
+    waitingOn.set(key, event.id);
+    if (event.tool_use_id) { requests.set(decisionKey(event), event); capped(requests, 300); }
+  } else if (event.kind === 'resolved' || event.kind === 'done') {
+    waitingOn.delete(key);
+    ended.delete(key);
+    ended.set(key, { id: event.id, kind: event.kind, ...(event.tool_use_id ? { tool_use_id: event.tool_use_id } : {}) });
+    capped(ended, 300);
+  }
+  capped(waitingOn, 300);
+}
+
 function emit(event) {
+  // Which app "Jump to terminal" would switch to, when the session's hooks reported one.
+  const app = event.session_id && focus.label(sessionKey(event.agent, event.session_id));
+  if (app) event.terminal = app;
+  stats.observe(event);
+  track(event);
   recent.push(event);
   if (recent.length > MAX_RECENT) recent.shift();
   const frame = encodeFrame(JSON.stringify({ type: 'event', event }));
   for (const s of sockets) safeWrite(s, frame);
-  log(`event #${event.id} ${event.kind} [${event.project}] -> ${sockets.size} client(s)`);
+  log(`event #${event.id} ${event.kind}${event.agent && event.agent !== DEFAULT_AGENT ? ' ' + event.agent : ''} [${event.project}] -> ${sockets.size} client(s)`);
   forward(event);
 }
 
@@ -453,19 +434,30 @@ const server = http.createServer((req, res) => {
     req.on('end', () => {
       if (url.pathname === '/test') {
         const kind = url.searchParams.get('kind') || 'question';
-        const event = testEvent(kind, Number(url.searchParams.get('phoneDelay') || 0));
-        if (event === undefined) return json(400, { error: 'unknown kind' });
-        if (event) emit(event);
-        return json(200, { ok: true, emitted: !!event });
+        const agent = url.searchParams.get('agent') || DEFAULT_AGENT;
+        const events = testEvents(kind, Number(url.searchParams.get('phoneDelay') || 0), focus.fromHook(null, req.headers), agent);
+        if (events === undefined) return json(400, { error: adapterFor(agent) ? `unknown kind for ${agent}` : 'unknown agent' });
+        for (const event of events) emit(event);
+        return json(200, { ok: true, emitted: events.length > 0, count: events.length });
       }
       let hook;
       try { hook = JSON.parse(body); } catch (_) { return json(400, { error: 'invalid json' }); }
-      const event = normalize(hook);
+      if (!hook || typeof hook !== 'object' || Array.isArray(hook)) return json(400, { error: 'expected a JSON object' });
+      // ?agent=codex|gemini comes from `nudge-hook.sh <agent>`; Claude Code's hooks send none.
+      const agent = url.searchParams.get('agent') || DEFAULT_AGENT;
+      if (!adapterFor(agent)) { log(`ignored hook from unknown agent "${agent}"`); return json(400, { error: 'unknown agent' }); }
+      // Remember the terminal before normalizing, so the event already names it.
+      if (hook.session_id) focus.remember(sessionKey(agent, hook.session_id), focus.fromHook(hook, req.headers));
+      const event = normalize(hook, agent);
       if (event) emit(event);
-      else log(`ignored ${hook.hook_event_name || '?'}${hook.notification_type ? '/' + hook.notification_type : ''}${hook.tool_name ? '/' + hook.tool_name : ''}`);
-      // canDecide tells the approval hook whether anything can answer (a paired phone); otherwise it won't wait.
-      const duplicate = !event && !!hook.tool_use_id && seenToolUse.has(hook.tool_use_id);
-      return json(200, { ok: true, emitted: !!event, duplicate, canDecide: !!cloud() });
+      else log(`ignored ${agent === DEFAULT_AGENT ? '' : agent + ' '}${hook.hook_event_name || '?'}${hook.notification_type ? '/' + hook.notification_type : ''}${hook.tool_name ? '/' + hook.tool_name : ''}`);
+      // canDecide tells the approval hook whether anything can answer (a paired phone, or the bubble while an
+      // extension with the secret is connected); otherwise it won't wait. A question also needs the question hook
+      // installed: without it the bubble shows no choices (approvable is false), so waiting would only delay Claude.
+      const isQuestion = agent === DEFAULT_AGENT && hook.hook_event_name === 'PreToolUse' && hook.tool_name === 'AskUserQuestion';
+      const duplicate = !event && !!hook.tool_use_id && ctx.seenToolUse.has(`${agent}:${hook.tool_use_id}`);
+      const canDecide = (!!cloud() || sockets.size > 0) && (!isQuestion || pairing.questionHookInstalled());
+      return json(200, { ok: true, emitted: !!event, duplicate, canDecide });
     });
     return;
   }

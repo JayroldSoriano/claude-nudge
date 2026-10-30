@@ -47,6 +47,45 @@ npx nudge-mascot uninstall       # removes everything it installed
 
 Requires Node 18+ and Chrome 116+.
 
+## Other agents
+
+Nudge also waits on OpenAI's Codex CLI and Google's Gemini CLI. `setup` with no flags installs hooks for every
+agent it finds (`~/.claude`; `~/.codex` or a `codex` binary; `~/.gemini/settings.json` or a `gemini` binary, since
+Antigravity and Gemini Code Assist create `~/.gemini` too) and prints what it did. Pick agents explicitly with
+`--agent`:
+
+```sh
+npx nudge-mascot setup --agent codex          # hooks in ~/.codex/hooks.json
+npx nudge-mascot setup --agent gemini         # hooks in ~/.gemini/settings.json
+npx nudge-mascot setup --agent claude-code,codex
+npx nudge-mascot test permission --agent codex  # a fake Codex nudge
+npx nudge-mascot status                       # hook status per agent
+npx nudge-mascot uninstall                    # removes the hooks from every agent's config
+```
+
+Every agent runs the same `~/.claude-nudge/nudge-hook.sh`; Codex and Gemini pass their name (`nudge-hook.sh codex`),
+which the hook sends as `POST /hook?agent=codex`, and the relay's adapter for that agent (`relay/adapters/`) turns
+the payload into the same event. The first write backs up the config next to it (`.bak-claude-nudge`; later runs
+keep that backup), merges, and is safe to re-run. A config that isn't plain JSON (comments, say) is left alone with a warning. Bubbles from other
+agents name the agent ("Codex is done", "Gemini needs permission") and show an agent badge next to the project.
+
+| Agent | Hooks | Nudges | Status |
+| --- | --- | --- | --- |
+| Claude Code | `Stop`, `Notification`, `PreToolUse` (AskUserQuestion), `PostToolUse`, `UserPromptSubmit`, plus the approval hooks (`PermissionRequest`, `PreToolUse` on AskUserQuestion) | question, permission, done, idle | Verified in daily use. Allow / Deny and answers from the bubble (approval hooks installed by `setup`) or the phone (`npx nudge-mascot pair`). |
+| Codex CLI | `PermissionRequest`, `PostToolUse`, `UserPromptSubmit`, `Stop`, `PreToolUse` (request_user_input) | permission, done (question unverified) | **Unverified on a live Codex.** Built from the official [hooks reference](https://developers.openai.com/codex/hooks); Codex wasn't installed where this was written. The `request_user_input` question payload is a guess. Codex only runs hooks you have trusted: type `/hooks` in Codex after setup. No idle nudges (Codex has no such event). |
+| Gemini CLI | `Notification` (ToolPermission), `AfterAgent`, `BeforeAgent`, `AfterTool` | permission, done | **Unverified on a live Gemini CLI.** Built from the [hooks reference](https://geminicli.com/docs/hooks/reference/) and the v0.66.0 source (the permission `details` shape). Upstream bug [#27712](https://github.com/google-gemini/gemini-cli/issues/27712): `AfterAgent` does not fire on some versions (reported for 0.45 to 0.55.1), so "done" may be missing there. No question or idle nudges. |
+
+Answering from the bubble or the phone (Allow / Deny, picking an answer) stays Claude Code only for now; for
+Codex and Gemini the bubble shows the request and you answer in the terminal. Jump to terminal and the waiting
+stats work for every agent, since they all run the same hook. Codex's `PermissionRequest` hook can decide too (it prints
+`{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"allow"}}}`, the same shape as
+Claude Code), so `nudge-approve.js` could serve it, but it would need: an `?agent=codex` post, a `tool_use_id`
+(Codex's payload documents none, so make up a fresh one per hook run, as the Claude hook already does for Claude
+Code 2.1.280; never derive it from the request, or a repeated command reuses the first answer), a `timeout` of 600
+on the hook entry, the adapter marking
+those events `approvable`, and testing against a real Codex to confirm the decision is honoured. Gemini's
+`Notification` hook is observe-only and cannot approve; that would need its `BeforeTool` hook instead.
+
 ## What gets shown
 
 | Event | Trigger | Bubble | Auto-dismiss |

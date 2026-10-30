@@ -101,6 +101,8 @@
     .dot.idle { background: #888; }
     .title { font-weight: 700; font-size: 13px; letter-spacing: .01em; }
     .project { margin-left: auto; font-size: 11px; padding: 2px 7px; border-radius: 999px; background: #f1e9df; color: #5a4a3a; max-width: 120px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .agent { margin-left: auto; font-size: 11px; padding: 1px 6px; border-radius: 999px; border: 1.5px solid #1f1d1a; background: #fff; color: #1f1d1a; white-space: nowrap; flex: none; }
+    .project + .agent { margin-left: 0; }
     .msg { white-space: pre-wrap; word-break: break-word; max-height: 9.5em; overflow: hidden; position: relative; }
     .msg.expanded { max-height: 60vh; overflow: auto; }
     .msg.clamped::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2em; background: linear-gradient(transparent, #fffdf9); }

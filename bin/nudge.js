@@ -1,12 +1,16 @@
 #!/usr/bin/env node
 // Nudge CLI.
-//   npx nudge-mascot setup      install hooks, relay, launch agent; print the extension step
+//   npx nudge-mascot setup [--agent claude-code|codex|gemini]
+//                               install hooks (every agent found, or the ones named; for Claude Code also the
+//                               approval hooks), relay, launch agent; print the extension step
 //   npx nudge-mascot start      run the relay in the foreground
-//   npx nudge-mascot status     relay health + hook status
-//   npx nudge-mascot test [kind] send a test nudge (question | permission | done | resolved)
-//   npx nudge-mascot uninstall  remove hooks, launch agent, and ~/.claude-nudge
-//   npx nudge-mascot pair [--relay URL]   pair a phone through the hosted relay (installs the approval hook)
-//   npx nudge-mascot unpair     forget the hosted relay and remove the approval hook
+//   npx nudge-mascot status     relay health + hook status per agent
+//   npx nudge-mascot test [kind] [--agent codex|gemini]
+//                               send a test nudge (question | questions | permission | approve | done | resolved |
+//                               jump | jump-unknown | multi)
+//   npx nudge-mascot uninstall  remove hooks (all agents, approval hooks included), launch agent, and ~/.claude-nudge
+//   npx nudge-mascot pair [--relay URL]   pair a phone through the hosted relay (installs the approval hooks if missing)
+//   npx nudge-mascot unpair     forget the hosted relay (the approval hooks stay for the bubble)
 'use strict';
 const fs = require('fs');
 const os = require('os');
@@ -35,6 +39,51 @@ const HOOKS = {
   PostToolUse: null,
   UserPromptSubmit: null,
 };
+const BACKUP_SUFFIX = '.bak-claude-nudge';
+
+// The agents Nudge can hook into. All run the same nudge-hook.sh; Codex and Gemini pass their name so the relay
+// picks their adapter (relay/adapters/). `hooks` is event -> matcher (null: every occurrence). `re` recognises our
+// own entries, including stale ones from an older install path. `marker` (or `dir`) and `bin` decide detection.
+const AGENTS = {
+  'claude-code': {
+    label: 'Claude Code',
+    file: SETTINGS,
+    dir: path.join(HOME, '.claude'),
+    bin: 'claude',
+    hooks: HOOKS,
+    // Quoted, so a HOME with spaces works. Earlier versions installed it unquoted; `re` matches both, so `setup`
+    // replaces the old entry with this one.
+    command: `"${HOOK}"`,
+    entry: {},
+    re: /nudge-hook\.sh"?$/,
+    removeRe: /nudge-(hook\.sh|approve\.js)"?$/, // the approval hook's command ends in a quote
+  },
+  // ~/.codex/hooks.json, per the Codex hooks docs. Codex asks the user to review and trust new hooks (/hooks).
+  codex: {
+    label: 'Codex',
+    file: path.join(HOME, '.codex', 'hooks.json'),
+    dir: path.join(HOME, '.codex'),
+    bin: 'codex',
+    hooks: { PermissionRequest: null, PreToolUse: 'request_user_input', PostToolUse: null, UserPromptSubmit: null, Stop: null },
+    command: `"${HOOK}" codex`,
+    entry: { timeout: 10 }, // seconds
+    re: /nudge-hook\.sh"?\s+codex$/,
+    note: 'Codex runs new hooks only after you trust them: type /hooks in Codex and trust the Nudge entries.',
+  },
+  // ~/.gemini/settings.json, per the Gemini CLI hooks docs. ~/.gemini alone is not enough to detect Gemini CLI:
+  // Antigravity and Gemini Code Assist create it too, so detection wants settings.json or the gemini binary.
+  gemini: {
+    label: 'Gemini CLI',
+    file: path.join(HOME, '.gemini', 'settings.json'),
+    marker: path.join(HOME, '.gemini', 'settings.json'),
+    bin: 'gemini',
+    hooks: { Notification: null, AfterAgent: null, BeforeAgent: null, AfterTool: null },
+    command: `"${HOOK}" gemini`,
+    entry: { name: 'nudge', timeout: 5000 }, // milliseconds
+    re: /nudge-hook\.sh"?\s+gemini$/,
+  },
+};
+const ALIASES = { claude: 'claude-code', 'gemini-cli': 'gemini' };
 
 const log = (m) => console.log(m);
 const ok = (m) => console.log(`  ✓ ${m}`);
@@ -48,39 +97,107 @@ function copyDir(src, dst) {
   }
 }
 
-function readSettings() {
-  try { return JSON.parse(fs.readFileSync(SETTINGS, 'utf8')); } catch (_) { return {}; }
+// A missing file reads as {}. A file that exists but does not parse (Gemini allows comments, say) is reported
+// instead of being overwritten with only our hooks in it.
+function readJson(file) {
+  if (!fs.existsSync(file)) return { data: {} };
+  try {
+    const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+    return data && typeof data === 'object' && !Array.isArray(data) ? { data } : { error: `${file} is not a JSON object` };
+  } catch (e) { return { error: `${file} is not plain JSON (${e.message}); add the hooks by hand or fix the file` }; }
 }
 
-function installHooks() {
-  const settings = readSettings();
-  if (fs.existsSync(SETTINGS)) fs.copyFileSync(SETTINGS, SETTINGS + '.bak-claude-nudge');
+function onPath(bin) {
+  return (process.env.PATH || '').split(path.delimiter).some((d) => d && fs.existsSync(path.join(d, bin)));
+}
+
+function detected(id) {
+  const a = AGENTS[id];
+  return fs.existsSync(a.marker || a.dir) || onPath(a.bin);
+}
+
+// Backs up the agent's config, then merges our hooks in. Idempotent: entries already present are kept,
+// stale Nudge entries (an older install path) are replaced, everything else is left alone. The backup is written only
+// when none exists, so it keeps the config from before Nudge first touched it.
+function installHooks(id) {
+  const a = AGENTS[id];
+  const { data: settings, error } = readJson(a.file);
+  if (error) return { error };
+  if (fs.existsSync(a.file) && !fs.existsSync(a.file + BACKUP_SUFFIX)) fs.copyFileSync(a.file, a.file + BACKUP_SUFFIX);
   settings.hooks = settings.hooks || {};
   let added = 0;
-  for (const [event, matcher] of Object.entries(HOOKS)) {
-    const list = (settings.hooks[event] = settings.hooks[event] || []);
-    // Drop stale entries that point at an old checkout, keep everything else.
-    for (const g of list) if (g.hooks) g.hooks = g.hooks.filter((h) => !/nudge-hook\.sh$/.test(h.command || '') || h.command === HOOK);
-    if (!list.some((g) => (g.hooks || []).some((h) => h.command === HOOK))) {
-      list.push({ ...(matcher ? { matcher } : {}), hooks: [{ type: 'command', command: HOOK }] });
+  for (const [event, matcher] of Object.entries(a.hooks)) {
+    // Drop stale entries (an old checkout, or the unquoted command earlier versions wrote), keep everything else.
+    // A group left empty by that goes too, rather than lingering as {hooks: []}.
+    const list = (settings.hooks[event] = (settings.hooks[event] || []).filter((g) => {
+      if (!Array.isArray(g.hooks)) return true;
+      const kept = g.hooks.filter((h) => !a.re.test(h.command || '') || h.command === a.command);
+      const emptied = g.hooks.length > 0 && kept.length === 0;
+      g.hooks = kept;
+      return !emptied;
+    }));
+    if (!list.some((g) => (g.hooks || []).some((h) => h.command === a.command))) {
+      list.push({ ...(matcher ? { matcher } : {}), hooks: [{ type: 'command', command: a.command, ...a.entry }] });
       added++;
     }
   }
-  fs.mkdirSync(path.dirname(SETTINGS), { recursive: true });
-  fs.writeFileSync(SETTINGS, JSON.stringify(settings, null, 2) + '\n');
-  return added;
+  fs.mkdirSync(path.dirname(a.file), { recursive: true });
+  fs.writeFileSync(a.file, JSON.stringify(settings, null, 2) + '\n');
+  return { added };
 }
 
-function removeHooks(pattern = /nudge-(hook\.sh|approve\.js)$/) {
-  const settings = readSettings();
-  if (!settings.hooks) return;
+// Removes every Nudge hook from the agent's config (for Claude Code, the approval hook too). Returns the count.
+function removeHooks(id) {
+  const a = AGENTS[id];
+  const pattern = a.removeRe || a.re;
+  const { data: settings, error } = readJson(a.file);
+  if (error) return { error };
+  if (!settings.hooks || typeof settings.hooks !== 'object') return { removed: 0 };
+  let removed = 0;
   for (const event of Object.keys(settings.hooks)) {
+    if (!Array.isArray(settings.hooks[event])) continue;
     settings.hooks[event] = settings.hooks[event]
-      .map((g) => ({ ...g, hooks: (g.hooks || []).filter((h) => !pattern.test(h.command || '')) }))
+      .map((g) => {
+        const hooks = (g.hooks || []).filter((h) => !pattern.test(h.command || ''));
+        removed += (g.hooks || []).length - hooks.length;
+        return { ...g, hooks };
+      })
       .filter((g) => g.hooks.length);
     if (!settings.hooks[event].length) delete settings.hooks[event];
   }
-  fs.writeFileSync(SETTINGS, JSON.stringify(settings, null, 2) + '\n');
+  if (removed) fs.writeFileSync(a.file, JSON.stringify(settings, null, 2) + '\n');
+  return { removed };
+}
+
+// Which events of the agent's hook set point at nudge-hook.sh.
+function hookStatus(id) {
+  const a = AGENTS[id];
+  const { data: s, error } = readJson(a.file);
+  if (error) return { error };
+  const events = Object.keys(a.hooks);
+  const present = events.filter((e) => (s.hooks && Array.isArray(s.hooks[e]) ? s.hooks[e] : []).some((g) => (g.hooks || []).some((hk) => a.re.test(hk.command || ''))));
+  return { present, missing: events.filter((e) => !present.includes(e)) };
+}
+
+// --agent codex, --agent=gemini, --agent codex,gemini. [] when absent; exits on an unknown name, and on a bare
+// `--agent` or an empty `--agent=` (rather than falling through to "every agent found").
+function agentArgs() {
+  const out = [];
+  const argv = process.argv.slice(3);
+  let given = false;
+  for (let i = 0; i < argv.length; i++) {
+    let v = null;
+    if (argv[i] === '--agent') v = argv[++i] || '';
+    else if (argv[i].startsWith('--agent=')) v = argv[i].slice('--agent='.length);
+    if (v !== null) { given = true; out.push(...v.split(',').map((x) => x.trim().toLowerCase()).filter(Boolean)); }
+  }
+  const ids = out.map((x) => ALIASES[x] || x);
+  const bad = ids.filter((x) => !AGENTS[x]);
+  if (bad.length || (out.length === 0 && given)) {
+    log(`unknown agent: ${bad.join(', ') || '(none given)'}; use one of: ${Object.keys(AGENTS).join(', ')}`);
+    process.exit(1);
+  }
+  return [...new Set(ids)];
 }
 
 
@@ -164,7 +281,13 @@ function waitForHealth(tries = 20) {
 }
 
 async function setup() {
+  let agents = agentArgs();
   log('\nNudge · setup\n');
+  if (!agents.length) {
+    agents = Object.keys(AGENTS).filter(detected);
+    if (!agents.length) agents = ['claude-code']; // nothing found: the original Claude Code-only install
+    log(`  · agents found: ${agents.map((id) => AGENTS[id].label).join(', ')} (pick with --agent ${Object.keys(AGENTS).join('|')})`);
+  }
   fs.mkdirSync(INSTALL_DIR, { recursive: true });
   copyDir(path.join(PKG, 'relay'), path.join(INSTALL_DIR, 'relay'));
   copyDir(path.join(PKG, 'extension'), path.join(INSTALL_DIR, 'extension'));
@@ -172,9 +295,23 @@ async function setup() {
   fs.chmodSync(HOOK, 0o755);
   fs.copyFileSync(path.join(PKG, 'hooks', 'nudge-approve.js'), APPROVE);
   ok(`files installed in ${INSTALL_DIR}`);
+  // Before the relay (re)starts, so it reads the secret at start. Kept across re-runs: the extension has it stored.
+  const { secret: code, created } = secret.ensure();
+  ok(`${created ? 'connection code created' : 'connection code kept'} in ${secret.FILE} (only you can read it)`);
 
-  const added = installHooks();
-  ok(added ? `${added} hook(s) added to ${SETTINGS} (backup saved next to it)` : `hooks already present in ${SETTINGS}`);
+  const notes = [];
+  for (const id of agents) {
+    const a = AGENTS[id];
+    const r = installHooks(id);
+    if (r.error) { warn(`${a.label}: hooks not installed: ${r.error}`); continue; }
+    ok(`${a.label}: ${r.added ? `${r.added} hook(s) added to ${a.file} (backup saved next to it)` : `hooks already present in ${a.file}`}`);
+    if (a.note) notes.push(a.note);
+    if (id === 'claude-code') {
+      // The approval hooks power "reply from the bubble" (and the phone, once paired). installHooks() saved the backup.
+      const approval = pairing.installApprovalHooks({ backup: false });
+      ok(approval ? 'approval hooks added (PermissionRequest, PreToolUse/AskUserQuestion; they only wait while Chrome or a phone can answer)' : 'approval hooks already present');
+    }
+  }
 
   const how = installService();
   const h = await waitForHealth();
@@ -187,23 +324,37 @@ async function setup() {
     log('  1. Open chrome://extensions and turn on Developer mode.');
     log(`  2. Click "Load unpacked" and pick: ${path.join(INSTALL_DIR, 'extension')}`);
   }
-  log('\nThen restart any running Claude Code session and run: npx nudge-mascot test\n');
+  log('  Then click the Nudge toolbar icon, choose Connect, and paste this code (`npx nudge-mascot status` prints it again):');
+  log(`\n      ${code}\n`);
+  const names = agents.map((id) => AGENTS[id].label).join(' / ');
+  log(`\nThen restart any running ${names} session and run: npx nudge-mascot test`);
+  for (const n of notes) log(n);
+  log('');
 }
 
 async function status() {
   const h = await health();
   if (h) ok(`relay up on 127.0.0.1:${h.port}, ${h.clients} extension connection(s), ${h.events} recent event(s)`);
   else warn(`relay not reachable on 127.0.0.1:${PORT}`);
-  const s = readSettings();
-  const present = Object.keys(HOOKS).filter((e) => (s.hooks && s.hooks[e] || []).some((g) => (g.hooks || []).some((hk) => /nudge-hook\.sh$/.test(hk.command || ''))));
-  if (present.length === Object.keys(HOOKS).length) ok(`hooks installed (${present.join(', ')})`);
-  else warn(`hooks missing: ${Object.keys(HOOKS).filter((e) => !present.includes(e)).join(', ') || 'none'}; run: npx nudge-mascot setup`);
-  if (h && h.clients === 0) warn('no extension connected: load it from chrome://extensions and click its Reload icon');
+  for (const id of Object.keys(AGENTS)) {
+    const a = AGENTS[id];
+    const s = hookStatus(id);
+    if (s.error) warn(`${a.label}: ${s.error}`);
+    else if (!s.missing.length) ok(`${a.label}: hooks installed (${s.present.join(', ')})`);
+    else if (s.present.length || detected(id)) warn(`${a.label}: hooks missing: ${s.missing.join(', ')}; run: npx nudge-mascot setup --agent ${id}`);
+    else log(`  · ${a.label}: not detected`);
+    if (id === 'claude-code' && !s.error) {
+      if (pairing.hooksInstalled()) ok('approval hooks installed (PermissionRequest, PreToolUse/AskUserQuestion): reply from the bubble is on');
+      else warn('approval hooks missing, so the bubble cannot answer Claude; run: npx nudge-mascot setup --agent claude-code');
+    }
+  }
+  if (h && h.clients === 0) warn('no extension connected: load it from chrome://extensions and click its Reload icon, then paste the code below into its popup (Connect)');
+  const code = secret.read();
+  if (code) ok(`connection code (paste into the extension popup if it asks): ${code}`);
+  else warn(`no connection code in ${secret.FILE}; run: npx nudge-mascot setup`);
   const cloud = pairing.read();
   if (cloud) {
     ok(`phone pairing on ${cloud.relay} (user ${cloud.userId})`);
-    if (pairing.hooksInstalled()) ok('approval hooks installed (PermissionRequest, PreToolUse/AskUserQuestion)');
-    else warn('approval hooks missing; run: npx nudge-mascot pair');
   } else {
     log('  · no phone paired (optional): npx nudge-mascot pair, or "Pair a phone" in the extension popup');
   }
@@ -239,7 +390,13 @@ function test(kind = 'question') {
 }
 
 function uninstall() {
-  removeHooks(); ok('hooks removed from settings.json');
+  for (const id of Object.keys(AGENTS)) {
+    const a = AGENTS[id];
+    const r = removeHooks(id);
+    if (r.error) warn(`${a.label}: ${r.error}; remove the nudge-hook.sh entries by hand`);
+    else if (r.removed) ok(`${a.label}: ${r.removed} hook(s) removed from ${a.file}`);
+    else if (id === 'claude-code') ok('hooks removed from settings.json');
+  }
   removeService(); ok('relay service removed');
   fs.rmSync(INSTALL_DIR, { recursive: true, force: true }); ok(`${INSTALL_DIR} deleted`);
   log('Remove the extension from chrome://extensions to finish.');
@@ -253,13 +410,20 @@ function start() {
 const cmd = process.argv[2] || 'help';
 ({
   setup, start, status, uninstall, pair, unpair,
-  test: () => test(process.argv[3]),
+  test: () => {
+    const agent = agentArgs()[0] || '';
+    const kind = process.argv.slice(3).find((x, i, all) => !x.startsWith('--') && all[i - 1] !== '--agent');
+    return test(kind, agent);
+  },
   help: () => log(`Nudge
 
-  npx nudge-mascot setup        install hooks + relay, then load the extension
+  npx nudge-mascot setup        install hooks + relay for every agent found, then load the extension
+                                (--agent claude-code|codex|gemini to pick; comma-separate several)
   npx nudge-mascot start        run the relay in the foreground
-  npx nudge-mascot status       relay health and hook status
-  npx nudge-mascot test [kind]  question | permission | approve | done | resolved
+  npx nudge-mascot status       relay health and hook status per agent
+  npx nudge-mascot test [kind]  question | questions | permission | approve | done | resolved
+                                jump (Jump to terminal, back to this one) | jump-unknown | multi (three sessions)
+                                --agent codex|gemini: that agent's question | permission | done | resolved
   npx nudge-mascot pair         pair the Nudge phone app (optional; --relay URL to override)
   npx nudge-mascot unpair       forget the phone pairing
   npx nudge-mascot uninstall    remove everything this tool installed`),
