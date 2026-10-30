@@ -131,6 +131,19 @@ $('pairStart').addEventListener('click', async () => {
   } finally { $('pairStart').disabled = false; }
 });
 
+// ---------- Test nudges: the relay's /test, same as `npx nudge-mascot test <kind>` ----------
+for (const b of document.querySelectorAll('button.test')) {
+  b.addEventListener('click', async () => {
+    const kind = b.dataset.kind, delay = Number(b.dataset.phoneDelay || 0);
+    const hint = $('testHint');
+    hint.textContent = delay ? `Sent. Lock the phone now: the notification arrives in ${delay} s.` : 'Sent.';
+    try {
+      await relayApi(`test?kind=${encodeURIComponent(kind)}${delay ? `&phoneDelay=${delay}` : ''}`, { method: 'POST' });
+      setTimeout(refresh, 500);
+    } catch (e) { hint.textContent = `Could not send: ${e.message}`; }
+  });
+}
+
 $('unpair').addEventListener('click', async () => {
   if (!confirm('Forget the phone? The approval hooks are removed too; nothing waits for the phone afterwards.')) return;
   try { await relayApi('pair/stop', { method: 'POST' }); } catch (_) { /* relay offline */ }

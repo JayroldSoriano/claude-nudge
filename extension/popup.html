@@ -64,6 +64,17 @@
     <div class="help" style="margin-top:6px">Open the Nudge app and scan, or type the code. The relay is <code id="pairRelay"></code>. <span id="pairHint"></span></div>
   </div>
 
+  <h2 class="section">Test nudges</h2>
+  <div class="help" style="margin:0 0 6px">Sends a fake event through the relay, like <code>npx nudge-mascot test</code>: the bubble here and the paired phone both get it.</div>
+  <div class="actions" style="margin-top:0; flex-wrap: wrap">
+    <button class="test" data-kind="question">Question</button>
+    <button class="test" data-kind="permission">Permission</button>
+    <button class="test" data-kind="approve">Approve from phone</button>
+    <button class="test" data-kind="done">Done</button>
+    <button class="test" data-kind="approve" data-phone-delay="5" title="Lock the phone within 5 seconds; the notification arrives with Allow / Deny">Lock screen (5 s)</button>
+  </div>
+  <div class="help" id="testHint" style="margin-top:4px"></div>
+
   <div class="actions">
     <button class="primary" id="preview">Preview nudge</button>
     <button id="reconnect">Reconnect</button>

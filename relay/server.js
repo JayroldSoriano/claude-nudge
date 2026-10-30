@@ -319,6 +319,9 @@ const server = http.createServer((req, res) => {
         };
         if (!samples[kind]) return json(400, { error: 'unknown kind' });
         const event = normalize(samples[kind]);
+        // phoneDelay=N: the paired phone raises its notification N seconds later (time to lock the screen).
+        const phoneDelay = Number(url.searchParams.get('phoneDelay') || 0);
+        if (event && phoneDelay > 0) event.notifyAfter = Math.min(phoneDelay, 60);
         if (event) emit(event);
         return json(200, { ok: true, emitted: !!event });
       }
