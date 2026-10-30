@@ -155,6 +155,24 @@ function normalize(hook) {
   }
 }
 
+// A fake hook payload of the given kind, normalized like a real one. `undefined` for an unknown kind.
+// phoneDelay=N: the paired phone raises its notification N seconds later (time to lock the screen).
+function testEvent(kind, phoneDelay) {
+  const common = { cwd: process.cwd(), session_id: 'test' };
+  const samples = {
+    question: { ...common, hook_event_name: 'PreToolUse', tool_name: 'AskUserQuestion', tool_use_id: `test-q-${Date.now()}`,
+      tool_input: { questions: [{ header: 'Approach', question: 'This is a test nudge. Which approach should I take for the auth refactor?', options: [{ label: 'Keep sessions' }, { label: 'Move to JWT' }] }] } },
+    permission: { ...common, hook_event_name: 'Notification', notification_type: 'permission_prompt', message: 'Claude needs your permission to use Bash' },
+    done: { ...common, hook_event_name: 'Stop', last_assistant_message: 'Test run finished. All 42 tests pass and the branch is ready for review.' },
+    resolved: { ...common, hook_event_name: 'UserPromptSubmit' },
+    approve: { ...common, hook_event_name: 'PermissionRequest', tool_name: 'Bash', tool_use_id: `test-${Date.now()}`, tool_input: { command: 'npm publish --access public' } },
+  };
+  if (!samples[kind]) return undefined;
+  const event = normalize(samples[kind]);
+  if (event && phoneDelay > 0) event.notifyAfter = Math.min(phoneDelay, 60);
+  return event;
+}
+
 function emit(event) {
   recent.push(event);
   if (recent.length > MAX_RECENT) recent.shift();
@@ -176,6 +194,39 @@ function forward(event) {
   }).then((r) => { if (!r.ok) log(`cloud rejected event #${event.id}: HTTP ${r.status}`); })
     .catch((e) => log(`cloud forward failed: ${e.message}`));
 }
+
+// ---------- hosted relay link ----------
+// While paired, keep a WebSocket to the hosted relay: phones' decisions and "run a test nudge" commands arrive
+// here, and the hosted relay can tell phones whether this laptop is online. Re-checked every 5 s, so pairing
+// or unpairing from the popup takes effect without a restart.
+let cloudWs = null, cloudWsToken = null;
+function connectCloud() {
+  const c = cloud();
+  if (!c || typeof WebSocket === 'undefined') {
+    if (cloudWs) { try { cloudWs.close(); } catch (_) {} cloudWs = null; cloudWsToken = null; }
+    return;
+  }
+  if (cloudWs && cloudWsToken === c.laptopToken && cloudWs.readyState <= 1) return; // open or connecting
+  if (cloudWs) { try { cloudWs.close(); } catch (_) {} }
+  cloudWsToken = c.laptopToken;
+  const ws = new WebSocket(`${c.relay.replace(/^http/, 'ws')}/ws?token=${encodeURIComponent(c.laptopToken)}`);
+  cloudWs = ws;
+  ws.onopen = () => log(`cloud link up (${c.relay})`);
+  ws.onmessage = (m) => {
+    let msg;
+    try { msg = JSON.parse(String(m.data)); } catch (_) { return; }
+    if (msg.type === 'decision' && msg.decision) decisions.set(`${msg.decision.session_id}:${msg.decision.tool_use_id}`, msg.decision);
+    if (msg.type === 'command' && msg.command === 'test') {
+      const event = testEvent(msg.kind || 'approve', Number(msg.phoneDelay) || 0);
+      if (event) { emit(event); log(`test "${msg.kind}" requested from a phone`); }
+    }
+  };
+  ws.onclose = () => { if (cloudWs === ws) { cloudWs = null; log('cloud link closed'); } };
+  ws.onerror = () => { try { ws.close(); } catch (_) {} };
+}
+setInterval(connectCloud, 5000).unref();
+setInterval(() => { if (cloudWs && cloudWs.readyState === 1) { try { cloudWs.send(JSON.stringify({ type: 'ping' })); } catch (_) {} } }, PING_INTERVAL_MS).unref();
+connectCloud();
 
 // A decision for the approval hook: from the bubble (POST /decision) or, when paired, from the phone via the cloud.
 async function awaitDecision(sessionId, toolUseId, waitMs) {
@@ -308,20 +359,8 @@ const server = http.createServer((req, res) => {
     req.on('end', () => {
       if (url.pathname === '/test') {
         const kind = url.searchParams.get('kind') || 'question';
-        const common = { cwd: process.cwd(), session_id: 'test' };
-        const samples = {
-          question: { ...common, hook_event_name: 'PreToolUse', tool_name: 'AskUserQuestion', tool_use_id: `test-q-${Date.now()}`,
-            tool_input: { questions: [{ header: 'Approach', question: 'This is a test nudge. Which approach should I take for the auth refactor?', options: [{ label: 'Keep sessions' }, { label: 'Move to JWT' }] }] } },
-          permission: { ...common, hook_event_name: 'Notification', notification_type: 'permission_prompt', message: 'Claude needs your permission to use Bash' },
-          done: { ...common, hook_event_name: 'Stop', last_assistant_message: 'Test run finished. All 42 tests pass and the branch is ready for review.' },
-          resolved: { ...common, hook_event_name: 'UserPromptSubmit' },
-          approve: { ...common, hook_event_name: 'PermissionRequest', tool_name: 'Bash', tool_use_id: `test-${Date.now()}`, tool_input: { command: 'npm publish --access public' } },
-        };
-        if (!samples[kind]) return json(400, { error: 'unknown kind' });
-        const event = normalize(samples[kind]);
-        // phoneDelay=N: the paired phone raises its notification N seconds later (time to lock the screen).
-        const phoneDelay = Number(url.searchParams.get('phoneDelay') || 0);
-        if (event && phoneDelay > 0) event.notifyAfter = Math.min(phoneDelay, 60);
+        const event = testEvent(kind, Number(url.searchParams.get('phoneDelay') || 0));
+        if (event === undefined) return json(400, { error: 'unknown kind' });
         if (event) emit(event);
         return json(200, { ok: true, emitted: !!event });
       }
