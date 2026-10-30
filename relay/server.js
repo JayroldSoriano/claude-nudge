@@ -9,6 +9,7 @@ const crypto = require('crypto');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const pairing = require('./pairing');
 
 const HOST = '127.0.0.1';
 const PORT = Number(process.env.CLAUDE_NUDGE_PORT || 47831);
@@ -365,6 +366,29 @@ const server = http.createServer((req, res) => {
       }
       return json(200, { ok: true });
     });
+    return;
+  }
+  // Phone pairing, driven from the extension popup. The relay owns cloud.json and the approval hooks.
+  if (req.method === 'POST' && url.pathname === '/pair/start') {
+    let body = '';
+    req.setEncoding('utf8');
+    req.on('data', (c) => { body += c; if (body.length > 1e4) req.destroy(); });
+    req.on('end', () => {
+      let relay;
+      try { relay = body ? JSON.parse(body).relay : undefined; } catch (_) { /* default relay */ }
+      pairing.start(relay)
+        .then((r) => { log(`pairing started on ${r.relay} (user ${r.userId})`); json(200, r); })
+        .catch((e) => json(502, { error: e.message }));
+    });
+    return;
+  }
+  if (req.method === 'POST' && url.pathname === '/pair/stop') {
+    const r = pairing.stop();
+    log('pairing removed');
+    return json(200, r);
+  }
+  if (req.method === 'GET' && url.pathname === '/pair/status') {
+    pairing.status().then((s) => json(200, s));
     return;
   }
   json(404, { error: 'not found' });

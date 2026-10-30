@@ -25,9 +25,8 @@ const LAUNCHD_LABEL = 'com.claude-nudge.relay';
 const PLIST = path.join(HOME, 'Library', 'LaunchAgents', `${LAUNCHD_LABEL}.plist`);
 const SYSTEMD_UNIT = path.join(HOME, '.config', 'systemd', 'user', 'claude-nudge.service');
 const STORE_URL = process.env.CLAUDE_NUDGE_STORE_URL || ''; // set once the Web Store listing is live
-const CLOUD = path.join(INSTALL_DIR, 'cloud.json'); // { relay, userId, laptopToken } once a phone is paired
-const APPROVE = path.join(INSTALL_DIR, 'nudge-approve.js');
-const DEFAULT_RELAY = process.env.CLAUDE_NUDGE_RELAY || 'https://relay.nudgemascot.com';
+const pairing = require('../relay/pairing'); // phone pairing: cloud.json + the approval hooks
+const APPROVE = pairing.APPROVE;
 
 const HOOKS = {
   Stop: null,
@@ -84,29 +83,7 @@ function removeHooks(pattern = /nudge-(hook\.sh|approve\.js)$/) {
   fs.writeFileSync(SETTINGS, JSON.stringify(settings, null, 2) + '\n');
 }
 
-// The approval hook waits for a phone or bubble decision, so it gets Claude Code's full 600s timeout.
-function installApprovalHook() {
-  const settings = readSettings();
-  if (fs.existsSync(SETTINGS)) fs.copyFileSync(SETTINGS, SETTINGS + '.bak-claude-nudge');
-  settings.hooks = settings.hooks || {};
-  const command = `"${process.execPath}" "${APPROVE}"`;
-  const list = (settings.hooks.PermissionRequest = settings.hooks.PermissionRequest || []);
-  for (const g of list) if (g.hooks) g.hooks = g.hooks.filter((h) => !/nudge-approve\.js"?$/.test(h.command || '') || h.command === command);
-  if (!list.some((g) => (g.hooks || []).some((h) => h.command === command))) {
-    list.push({ hooks: [{ type: 'command', command, timeout: 600 }] });
-  }
-  // Questions: the same script answers AskUserQuestion with the option picked on the phone.
-  const pre = (settings.hooks.PreToolUse = settings.hooks.PreToolUse || []);
-  for (const g of pre) if (g.hooks) g.hooks = g.hooks.filter((h) => !/nudge-approve\.js"?$/.test(h.command || '') || h.command === command);
-  if (!pre.some((g) => (g.hooks || []).some((h) => h.command === command))) {
-    pre.push({ matcher: 'AskUserQuestion', hooks: [{ type: 'command', command, timeout: 600 }] });
-  }
-  fs.writeFileSync(SETTINGS, JSON.stringify(settings, null, 2) + '\n');
-}
 
-function readCloud() {
-  try { return JSON.parse(fs.readFileSync(CLOUD, 'utf8')); } catch (_) { return null; }
-}
 
 function installService() {
   const node = process.execPath;
@@ -222,44 +199,33 @@ async function status() {
   if (present.length === Object.keys(HOOKS).length) ok(`hooks installed (${present.join(', ')})`);
   else warn(`hooks missing: ${Object.keys(HOOKS).filter((e) => !present.includes(e)).join(', ') || 'none'}; run: npx nudge-mascot setup`);
   if (h && h.clients === 0) warn('no extension connected: load it from chrome://extensions and click its Reload icon');
-  const cloud = readCloud();
+  const cloud = pairing.read();
   if (cloud) {
     ok(`phone pairing on ${cloud.relay} (user ${cloud.userId})`);
-    const approve = (s.hooks && s.hooks.PermissionRequest || []).some((g) => (g.hooks || []).some((hk) => /nudge-approve\.js"?$/.test(hk.command || '')));
-    if (approve) ok('approval hook installed (PermissionRequest)');
-    else warn('approval hook missing; run: npx nudge-mascot pair');
+    if (pairing.hooksInstalled()) ok('approval hooks installed (PermissionRequest, PreToolUse/AskUserQuestion)');
+    else warn('approval hooks missing; run: npx nudge-mascot pair');
   } else {
-    log('  · no phone paired (optional): npx nudge-mascot pair');
+    log('  · no phone paired (optional): npx nudge-mascot pair, or "Pair a phone" in the extension popup');
   }
 }
 
 async function pair() {
   const i = process.argv.indexOf('--relay');
-  const relay = (i > 0 && process.argv[i + 1] ? process.argv[i + 1] : DEFAULT_RELAY).replace(/\/$/, '');
-  log(`\nNudge · pair a phone via ${relay}\n`);
-  let body;
-  try {
-    const res = await fetch(`${relay}/pair/start`, { method: 'POST', signal: AbortSignal.timeout(8000) });
-    body = await res.json();
-    if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
-  } catch (e) {
-    warn(`could not reach the relay: ${e.message}`);
-    return;
-  }
-  fs.mkdirSync(INSTALL_DIR, { recursive: true });
-  fs.writeFileSync(CLOUD, JSON.stringify({ relay: body.relay || relay, userId: body.userId, laptopToken: body.laptopToken, pairedAt: new Date().toISOString() }, null, 2) + '\n', { mode: 0o600 });
-  ok(`laptop token saved to ${CLOUD}`);
-  if (!fs.existsSync(APPROVE)) fs.copyFileSync(path.join(PKG, 'hooks', 'nudge-approve.js'), APPROVE);
-  installApprovalHook();
-  ok('approval hook added for permissions and questions (waits up to 10 minutes for the phone)');
-  log(`\n  Open the Nudge app, set the relay to ${body.relay || relay}, and enter this code within ${Math.round((body.expiresInSeconds || 600) / 60)} minutes:\n`);
-  log(`      ${body.pairCode}\n`);
-  log('Restart any running Claude Code session so the approval hook loads. Test with: npx nudge-mascot test approve\n');
+  const relay = i > 0 && process.argv[i + 1] ? process.argv[i + 1] : undefined;
+  log(`\nNudge · pair a phone via ${relay || pairing.DEFAULT_RELAY}\n`);
+  let r;
+  try { r = await pairing.start(relay); } catch (e) { warn(`could not reach the relay: ${e.message}`); return; }
+  ok(`laptop token saved to ${pairing.CLOUD}`);
+  ok('approval hooks added for permissions and questions (wait up to 10 minutes for the phone)');
+  log(`\n  In the Nudge app, scan this from the extension popup or enter it within ${Math.round(r.expiresInSeconds / 60)} minutes:\n`);
+  log(`      ${r.pairCode}      relay: ${r.relay}\n`);
+  log('Restart any running Claude Code session so the approval hooks load. Test with: npx nudge-mascot test approve\n');
 }
 
 function unpair() {
-  if (fs.existsSync(CLOUD)) { fs.unlinkSync(CLOUD); ok('hosted relay forgotten'); } else log('  · nothing was paired');
-  removeHooks(/nudge-approve\.js"?$/); ok('approval hook removed');
+  const r = pairing.stop();
+  if (r.wasPaired) ok('hosted relay forgotten'); else log('  · nothing was paired');
+  ok('approval hooks removed');
 }
 
 function test(kind = 'question') {

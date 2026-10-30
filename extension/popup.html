@@ -28,6 +28,11 @@
   code { background: #f1e9df; padding: 1px 4px; border-radius: 4px; }
   .footer { margin-top: 12px; padding-top: 8px; border-top: 1px solid #efe7dc; font-size: 11px; color: #7a6a5a; text-align: center; }
   .footer a { color: #b8641a; text-decoration: none; }
+  /* The pairing QR sits in the same paper-and-ink speech-bubble frame as the mascot's bubble. */
+  .qr { width: 196px; margin: 10px auto 6px; padding: 10px; background: #fffdf9; border: 2px solid #1f1d1a; border-radius: 14px; box-shadow: 4px 4px 0 #1f1d1a; }
+  .qr svg { display: block; width: 100%; height: auto; image-rendering: pixelated; }
+  .paircode { text-align: center; font-size: 12px; margin-top: 10px; }
+  .paircode code { font-size: 13px; font-weight: 600; letter-spacing: .04em; }
 </style>
 </head>
 <body>
@@ -50,6 +55,15 @@
   <div class="row"><label>Level timings (s) <span class="trio"><input type="number" id="escalateAt1" min="1"> <input type="number" id="escalateAt2" min="1"> <input type="number" id="escalateAt3" min="1"></span></label></div>
   <div class="row"><label>Snooze length (min) <input type="number" id="snoozeMin" min="1" max="60"></label></div>
 
+  <h2 class="section">Phone</h2>
+  <div class="row"><span id="phoneState">Checking…</span><button id="pairStart" hidden>Pair a phone</button><button id="unpair" hidden>Unpair</button></div>
+  <div class="row" id="relayRow"><label>Relay URL <input type="text" id="relayUrl" placeholder="https://relay.nudgemascot.com" style="width:150px"></label></div>
+  <div id="pairBox" hidden>
+    <div class="qr" id="qr"></div>
+    <div class="paircode">Code <code id="pairCode"></code></div>
+    <div class="help" style="margin-top:6px">Open the Nudge app and scan, or type the code. The relay is <code id="pairRelay"></code>. <span id="pairHint"></span></div>
+  </div>
+
   <div class="actions">
     <button class="primary" id="preview">Preview nudge</button>
     <button id="reconnect">Reconnect</button>
@@ -58,6 +72,7 @@
   <div class="recent"><h2>Recent</h2><div id="recent"></div></div>
   <div class="help" id="help" hidden>Relay not reachable. Start it with <code>npx nudge-mascot setup</code>. <a href="welcome.html" target="_blank">Setup guide</a></div>
   <div class="footer"><a href="https://github.com/JayroldSoriano/nudge-mascot" target="_blank">GitHub</a> · <a href="https://github.com/sponsors/JayroldSoriano" target="_blank">Sponsor</a> · <a href="https://nudge-mascot.vercel.app/privacy" target="_blank">Privacy</a></div>
+  <script src="vendor/qrcode.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>
