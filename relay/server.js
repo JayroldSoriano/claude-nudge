@@ -18,7 +18,8 @@ const PING_INTERVAL_MS = 20000; // keeps the MV3 service worker alive (Chrome ex
 const recent = [];
 const sockets = new Set();
 const pending = new Map(); // session_id -> kind of the nudge Claude is blocked on (question/permission)
-let nextId = 1;
+// Time-based so ids stay unique across relay restarts (the hosted relay keeps events from earlier runs).
+let nextId = Date.now();
 
 // Optional hosted relay (phone app). Written by `npx nudge-mascot pair`; read on every use so pairing
 // takes effect without a restart. Nothing here runs unless the file exists.
