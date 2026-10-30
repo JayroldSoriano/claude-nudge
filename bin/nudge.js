@@ -95,6 +95,12 @@ function installApprovalHook() {
   if (!list.some((g) => (g.hooks || []).some((h) => h.command === command))) {
     list.push({ hooks: [{ type: 'command', command, timeout: 600 }] });
   }
+  // Questions: the same script answers AskUserQuestion with the option picked on the phone.
+  const pre = (settings.hooks.PreToolUse = settings.hooks.PreToolUse || []);
+  for (const g of pre) if (g.hooks) g.hooks = g.hooks.filter((h) => !/nudge-approve\.js"?$/.test(h.command || '') || h.command === command);
+  if (!pre.some((g) => (g.hooks || []).some((h) => h.command === command))) {
+    pre.push({ matcher: 'AskUserQuestion', hooks: [{ type: 'command', command, timeout: 600 }] });
+  }
   fs.writeFileSync(SETTINGS, JSON.stringify(settings, null, 2) + '\n');
 }
 
@@ -245,7 +251,7 @@ async function pair() {
   ok(`laptop token saved to ${CLOUD}`);
   if (!fs.existsSync(APPROVE)) fs.copyFileSync(path.join(PKG, 'hooks', 'nudge-approve.js'), APPROVE);
   installApprovalHook();
-  ok('approval hook added (PermissionRequest, waits up to 10 minutes for the phone)');
+  ok('approval hook added for permissions and questions (waits up to 10 minutes for the phone)');
   log(`\n  Open the Nudge app, set the relay to ${body.relay || relay}, and enter this code within ${Math.round((body.expiresInSeconds || 600) / 60)} minutes:\n`);
   log(`      ${body.pairCode}\n`);
   log('Restart any running Claude Code session so the approval hook loads. Test with: npx nudge-mascot test approve\n');

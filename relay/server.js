@@ -33,6 +33,16 @@ function cloud() {
   } catch (_) { return null; }
 }
 
+// Both nudge-hook.sh and nudge-approve.js post the same PreToolUse payload; emit it once.
+const seenToolUse = new Map(); // tool_use_id -> ts
+function isDuplicate(toolUseId) {
+  const now = Date.now();
+  for (const [k, t] of seenToolUse) if (now - t > 60000) seenToolUse.delete(k);
+  if (seenToolUse.has(toolUseId)) return true;
+  seenToolUse.set(toolUseId, now);
+  return false;
+}
+
 function toolSummary(name, input) {
   if (!input || typeof input !== 'object') return '';
   if (name === 'Bash') return input.command || '';
@@ -86,14 +96,20 @@ function normalize(hook) {
       if (hook.tool_name !== 'AskUserQuestion') return null;
       const questions = (hook.tool_input && hook.tool_input.questions) || [];
       const text = questions.map((q) => q.question).filter(Boolean).join('\n\n');
+      if (hook.tool_use_id && isDuplicate(hook.tool_use_id)) return null;
       pending.set(base.session_id, 'question');
       return {
         ...base,
         kind: 'question',
         title: 'Claude has a question',
         message: clip(text || 'Claude is waiting for your answer.', 1200),
+        tool_name: 'AskUserQuestion',
+        tool_use_id: hook.tool_use_id || '',
+        approvable: !!hook.tool_use_id, // answerable from the phone when the approval hook is waiting
         options: questions.map((q) => ({
           header: q.header || '',
+          question: q.question || '',
+          multiSelect: !!q.multiSelect,
           choices: (q.options || []).map((o) => o.label).filter(Boolean),
         })),
       };
@@ -292,7 +308,7 @@ const server = http.createServer((req, res) => {
         const kind = url.searchParams.get('kind') || 'question';
         const common = { cwd: process.cwd(), session_id: 'test' };
         const samples = {
-          question: { ...common, hook_event_name: 'PreToolUse', tool_name: 'AskUserQuestion',
+          question: { ...common, hook_event_name: 'PreToolUse', tool_name: 'AskUserQuestion', tool_use_id: `test-q-${Date.now()}`,
             tool_input: { questions: [{ header: 'Approach', question: 'This is a test nudge. Which approach should I take for the auth refactor?', options: [{ label: 'Keep sessions' }, { label: 'Move to JWT' }] }] } },
           permission: { ...common, hook_event_name: 'Notification', notification_type: 'permission_prompt', message: 'Claude needs your permission to use Bash' },
           done: { ...common, hook_event_name: 'Stop', last_assistant_message: 'Test run finished. All 42 tests pass and the branch is ready for review.' },
@@ -310,7 +326,8 @@ const server = http.createServer((req, res) => {
       if (event) emit(event);
       else log(`ignored ${hook.hook_event_name || '?'}${hook.notification_type ? '/' + hook.notification_type : ''}${hook.tool_name ? '/' + hook.tool_name : ''}`);
       // canDecide tells the approval hook whether anything can answer (a paired phone); otherwise it won't wait.
-      return json(200, { ok: true, emitted: !!event, canDecide: !!cloud() });
+      const duplicate = !event && !!hook.tool_use_id && seenToolUse.has(hook.tool_use_id);
+      return json(200, { ok: true, emitted: !!event, duplicate, canDecide: !!cloud() });
     });
     return;
   }
@@ -333,7 +350,7 @@ const server = http.createServer((req, res) => {
     req.on('end', () => {
       let d;
       try { d = JSON.parse(body); } catch (_) { return json(400, { error: 'invalid json' }); }
-      if (!d.session_id || !d.tool_use_id || !(d.behavior === 'allow' || d.behavior === 'deny' || d.answer)) return json(400, { error: 'session_id, tool_use_id and behavior|answer required' });
+      if (!d.session_id || !d.tool_use_id || !(d.behavior === 'allow' || d.behavior === 'deny' || d.answer || d.answers)) return json(400, { error: 'session_id, tool_use_id and behavior|answer|answers required' });
       const decision = { ...d, by: 'browser', ts: Date.now() };
       decisions.set(`${d.session_id}:${d.tool_use_id}`, decision);
       const c = cloud();
