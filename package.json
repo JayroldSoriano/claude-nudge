@@ -35,12 +35,17 @@
   "files": [
     "bin",
     "relay/server.js",
+    "relay/pairing.js",
+    "relay/focus.js",
+    "relay/stats.js",
+    "relay/secret.js",
     "relay/adapters/index.js",
     "relay/adapters/claude-code.js",
     "relay/adapters/codex.js",
     "relay/adapters/gemini.js",
     "relay/package.json",
     "hooks/nudge-hook.sh",
+    "hooks/nudge-approve.js",
     "extension",
     "README.md",
     "LICENSE"

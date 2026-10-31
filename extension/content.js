@@ -3,6 +3,8 @@
 //
 // Escalation levels (driven by the service worker, only for questions/permissions):
 //   0 corner wave  ·  1 walks to bottom-center  ·  2 grows + annoyed face + foot tapping  ·  3 noise + roams the bottom edge
+// When several sessions wait at once, a row of session pills above the message switches between them; the level
+// the service worker sends is the most urgent session's.
 (() => {
   if (window.__claudeNudge) return;
   window.__claudeNudge = true;
@@ -115,6 +117,45 @@
     button.primary { background: ${BODY}; color: #fff; }
     button.link { border: none; background: none; padding: 0; font-weight: 500; text-decoration: underline; color: #5a4a3a; }
     .spacer { flex: 1; }
+    .dot.sent { background: #2e8b57; }
+    .note { margin-top: 8px; font-size: 12px; color: #7a6a5a; }
+    .err { margin-top: 8px; font-size: 12px; font-weight: 600; color: #b3261e; }
+
+    /* Session switcher: one pill per blocked session (project, kind dot, how long it has waited). */
+    /* Capped like .qlist: many sessions scroll inside the row instead of pushing the bubble off the top. */
+    .sessions { display: flex; flex-wrap: wrap; gap: 6px; margin: -2px 0 9px; padding: 0 4px 9px 0; border-bottom: 1.5px dashed #e4d9c9; max-height: min(84px, 20vh); overflow-y: auto; }
+    button.pill { display: inline-flex; align-items: center; gap: 5px; max-width: 160px; font-size: 11px; font-weight: 600; padding: 2px 8px 2px 7px; border-radius: 999px; background: #fffdf9; }
+    button.pill .dot { width: 7px; height: 7px; }
+    button.pill .pname { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+    button.pill small { font-size: 11px; font-weight: 500; color: #7a6a5a; font-variant-numeric: tabular-nums; }
+    button.pill.on { background: ${BODY}; box-shadow: 2px 2px 0 #1f1d1a; }
+    button.pill.on small { color: #5a4a3a; }
+    button.pill.hot { border-color: #b3261e; }
+    button.pill.hot:not(.on) small { color: #b3261e; }
+    .root .bubble.nopop { animation: none; }
+    .root.lvl-3 .bubble.nopop { animation: wiggle 1.2s ease-in-out infinite; }
+
+    /* Jump back: focuses the terminal app the session runs in. */
+    .jumprow { margin-top: 8px; }
+    button.jump { font-size: 12px; padding: 3px 10px; }
+    button.jump::before { content: "\\21A9\\00a0"; }
+
+    /* Reply from the bubble: the landing page's .btn (2px ink border, 3px hard shadow, presses into it). */
+    .reply { margin-top: 10px; display: flex; flex-direction: column; gap: 12px; }
+    .qlist { display: flex; flex-direction: column; gap: 12px; max-height: max(150px, calc(100vh - 330px)); overflow: auto; padding: 0 4px 4px 0; }
+    .decide { display: flex; gap: 10px; }
+    .decide .btn { flex: 1; }
+    .q { display: flex; flex-direction: column; gap: 6px; }
+    .eyebrow { font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: #7a6a5a; }
+    .qtext { font-weight: 600; white-space: pre-wrap; word-break: break-word; }
+    button.btn { border: 2px solid #1f1d1a; border-radius: 10px; padding: 7px 12px; font-size: 13px; background: #fffdf9; color: #1f1d1a; box-shadow: 3px 3px 0 #1f1d1a; }
+    button.btn:active:not(:disabled) { transform: translate(2px, 2px); box-shadow: 1px 1px 0 #1f1d1a; }
+    button.btn.gold, button.btn.sel { background: ${BODY}; color: #1f1d1a; }
+    button.btn.red { background: #b3261e; color: #fff; }
+    button.btn.sel::before { content: "\\2713\\00a0"; }
+    button.btn:disabled { opacity: .45; cursor: default; }
+    button.btn.choice { white-space: normal; text-align: left; width: 100%; padding: 5px 11px; }
+    button.btn.send { align-self: flex-start; }
     .timer { position: absolute; left: 10px; right: 10px; bottom: 4px; height: 3px; border-radius: 2px; background: #eadfd2; overflow: hidden; }
     .timer > i { display: block; height: 100%; background: ${BODY}; width: 100%; transform-origin: left; }
     .timer.running > i { animation: shrink var(--t) linear forwards; }
@@ -258,7 +299,7 @@
     const msg = slot.querySelector('.msg');
     const more = slot.querySelector('.more');
     requestAnimationFrame(() => {
-      if (msg.scrollHeight > msg.clientHeight + 2) {
+      if (msg && msg.scrollHeight > msg.clientHeight + 2) {
         msg.classList.add('clamped');
         more.hidden = false;
       }
@@ -565,8 +606,9 @@
 
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     if (!msg) return;
-    if (msg.type === 'nudge') { render(msg.event, msg.settings || {}, msg.expiresAt, msg.level || 0, msg.waitingMs || 0); sendResponse({ ok: true }); }
+    if (msg.type === 'nudge') { render(msg.event, msg.settings || {}, msg.expiresAt, msg.level || 0, msg.waitingMs || 0, { sessions: msg.sessions || [], quiet: !!msg.quiet }); sendResponse({ ok: true }); }
     else if (msg.type === 'escalate') { if (current && current.id === msg.id) setLevel(msg.level, msg.waitingMs || 0, !!msg.noise); sendResponse({ ok: true }); }
     else if (msg.type === 'dismiss') { dismiss(false); sendResponse({ ok: true }); }
+    else if (msg.type === 'settled') { if (current && current.id === msg.id) settle(msg.text || 'Answered'); sendResponse({ ok: true }); }
   });
 })();

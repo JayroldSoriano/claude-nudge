@@ -1,22 +1,28 @@
 #!/usr/bin/env node
-// Nudge approval hook. Installed by `npx nudge-mascot pair` for two events:
+// Nudge approval hook. Installed by `npx nudge-mascot setup` (and `pair`) for two events:
 //   PermissionRequest            -> waits for Allow / Deny, returns a PermissionRequest decision
 //   PreToolUse (AskUserQuestion) -> waits for the chosen option(s), returns updatedInput.answers
 //
 // Posts the request to the local relay, which shows it in the bubble and, when a phone is paired,
 // forwards it to the cloud. Then waits for the decision and returns it to Claude Code.
 // With no decision before the deadline it prints nothing, so the normal terminal prompt appears.
+// When nothing can answer (relay down, no extension connected, no phone paired) it returns right away.
 // Never fails: any error exits 0 with no output.
 'use strict';
 const http = require('http');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
 
 const PORT = Number(process.env.CLAUDE_NUDGE_PORT || 47831);
+// The per-install secret `setup` minted (relay/secret.js); the relay refuses requests without it.
+const SECRET = (() => { try { return fs.readFileSync(path.join(os.homedir(), '.claude-nudge', 'secret'), 'utf8').trim(); } catch (_) { return ''; } })();
 const WAIT_S = Number(process.env.CLAUDE_NUDGE_APPROVE_WAIT || 570); // hook timeout is 600
 const POLL_MS = 25000;
 
 function request(method, path, body) {
   return new Promise((resolve) => {
-    const req = http.request({ host: '127.0.0.1', port: PORT, path, method, headers: { 'Content-Type': 'application/json' }, timeout: POLL_MS + 5000 }, (res) => {
+    const req = http.request({ host: '127.0.0.1', port: PORT, path, method, headers: { 'Content-Type': 'application/json', 'X-Nudge-Secret': SECRET }, timeout: POLL_MS + 5000 }, (res) => {
       let b = '';
       res.on('data', (c) => (b += c));
       res.on('end', () => { try { resolve({ status: res.statusCode, body: b ? JSON.parse(b) : null }); } catch (_) { resolve(null); } });
@@ -47,18 +53,24 @@ function answersFor(questions, d) {
   let hook;
   try { hook = JSON.parse(raw); } catch (_) { return; }
   if (!hook.session_id) return;
-  // Claude Code 2.1.280 sends PermissionRequest without tool_use_id. Derive a stable one from what identifies the
-  // request, and send it to the relay, so the phone's decision comes back under the same key.
-  if (!hook.tool_use_id) {
-    const basis = `${hook.session_id}|${hook.prompt_id || ''}|${hook.tool_name || ''}|${JSON.stringify(hook.tool_input || {})}`;
-    hook.tool_use_id = 'pr-' + require('crypto').createHash('sha1').update(basis).digest('hex').slice(0, 16);
-    raw = JSON.stringify(hook);
-  }
+  // Claude Code 2.1.280 sends PermissionRequest without tool_use_id. Make up a fresh one for this invocation and send
+  // it to the relay: it only ties this hook's POST /hook to its own GET /decision polls (and the phone's decision to
+  // them). Never derive it from the request's content: the same command asked twice must not reuse the first answer.
+  if (!hook.tool_use_id) hook.tool_use_id = 'pr-' + require('crypto').randomUUID();
+  // The terminal this session runs in (same fields nudge-hook.sh sends as headers), for "Jump to terminal".
+  const env = process.env;
+  hook.terminal = env.TERM_PROGRAM || '';
+  hook.terminal_session = env.ITERM_SESSION_ID || env.TERM_SESSION_ID || '';
+  hook.terminal_bundle = env.__CFBundleIdentifier || '';
+  hook.tmux = env.TMUX || '';
+  hook.tmux_pane = env.TMUX_PANE || '';
+  hook.terminal_window = env.WINDOWID || '';
+  raw = JSON.stringify(hook);
   const isQuestion = hook.hook_event_name === 'PreToolUse' && hook.tool_name === 'AskUserQuestion';
   if (!isQuestion && hook.hook_event_name !== 'PermissionRequest') return;
 
   const posted = await request('POST', '/hook', raw);
-  // No relay, or nothing that can answer (no phone paired, no bubble reply yet): don't make Claude wait.
+  // No relay, or nothing that can answer (no phone paired, no extension connected for the bubble): don't make Claude wait.
   // `duplicate` means nudge-hook.sh already posted this question; the relay still tracks its decision.
   if (!posted || !posted.body || !(posted.body.emitted || posted.body.duplicate) || !posted.body.canDecide) return;
 

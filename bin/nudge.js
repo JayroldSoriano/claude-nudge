@@ -30,6 +30,7 @@ const PLIST = path.join(HOME, 'Library', 'LaunchAgents', `${LAUNCHD_LABEL}.plist
 const SYSTEMD_UNIT = path.join(HOME, '.config', 'systemd', 'user', 'claude-nudge.service');
 const STORE_URL = process.env.CLAUDE_NUDGE_STORE_URL || ''; // set once the Web Store listing is live
 const pairing = require('../relay/pairing'); // phone pairing: cloud.json + the approval hooks
+const secret = require('../relay/secret'); // the per-install secret the relay wants from every client
 const APPROVE = pairing.APPROVE;
 
 const HOOKS = {
@@ -367,7 +368,7 @@ async function pair() {
   let r;
   try { r = await pairing.start(relay); } catch (e) { warn(`could not reach the relay: ${e.message}`); return; }
   ok(`laptop token saved to ${pairing.CLOUD}`);
-  ok('approval hooks added for permissions and questions (wait up to 10 minutes for the phone)');
+  ok('approval hooks in place for permissions and questions (wait up to 10 minutes for the phone)');
   log(`\n  In the Nudge app, scan this from the extension popup or enter it within ${Math.round(r.expiresInSeconds / 60)} minutes:\n`);
   log(`      ${r.pairCode}      relay: ${r.relay}\n`);
   log('Restart any running Claude Code session so the approval hooks load. Test with: npx nudge-mascot test approve\n');
@@ -376,13 +377,30 @@ async function pair() {
 function unpair() {
   const r = pairing.stop();
   if (r.wasPaired) ok('hosted relay forgotten'); else log('  · nothing was paired');
-  ok('approval hooks removed');
+  log('  · approval hooks kept: the bubble still answers Claude (npx nudge-mascot uninstall removes everything)');
 }
 
-function test(kind = 'question') {
+// The terminal this command runs in, in the same headers nudge-hook.sh sends, so a test nudge's
+// "Jump to terminal" button switches back here.
+function terminalHeaders() {
+  const e = process.env;
+  const h = {
+    'X-Nudge-Terminal': e.TERM_PROGRAM || '',
+    'X-Nudge-Terminal-Session': e.ITERM_SESSION_ID || e.TERM_SESSION_ID || '',
+    'X-Nudge-Terminal-Bundle': e.__CFBundleIdentifier || '',
+    'X-Nudge-Tmux': e.TMUX || '',
+    'X-Nudge-Tmux-Pane': e.TMUX_PANE || '',
+    'X-Nudge-Window': e.WINDOWID || '',
+  };
+  for (const k of Object.keys(h)) if (!h[k] || /[^\x20-\x7e]/.test(h[k])) delete h[k];
+  return h;
+}
+
+function test(kind = 'question', agent = '') {
+  const q = `kind=${encodeURIComponent(kind)}${agent ? `&agent=${encodeURIComponent(agent)}` : ''}`;
   return new Promise((resolve) => {
-    const req = http.request({ host: '127.0.0.1', port: PORT, path: `/test?kind=${encodeURIComponent(kind)}`, method: 'POST' }, (res) => {
-      let b = ''; res.on('data', (c) => (b += c)); res.on('end', () => { log(res.statusCode === 200 ? `  ✓ sent a "${kind}" nudge` : `  ! ${b}`); resolve(); });
+    const req = http.request({ host: '127.0.0.1', port: PORT, path: `/test?${q}`, method: 'POST', headers: { ...terminalHeaders(), 'X-Nudge-Secret': secret.read() || '' } }, (res) => {
+      let b = ''; res.on('data', (c) => (b += c)); res.on('end', () => { log(res.statusCode === 200 ? `  ✓ sent a "${kind}" nudge${agent ? ` as ${AGENTS[agent].label}` : ''}` : `  ! ${b}`); resolve(); });
     });
     req.on('error', () => { warn(`relay not reachable on port ${PORT}; run: npx nudge-mascot setup`); resolve(); });
     req.end();

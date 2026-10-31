@@ -1,6 +1,8 @@
 'use strict';
 // Phone pairing, shared by the relay (the extension popup drives it) and the CLI (`npx nudge-mascot pair`).
-// Owns ~/.claude-nudge/cloud.json and the two approval hooks in ~/.claude/settings.json. Zero dependencies.
+// Owns ~/.claude-nudge/cloud.json and the two approval hooks in ~/.claude/settings.json. The approval hooks power
+// "reply from the bubble" too, so `setup` installs them as well; `pair` still does, for installs that predate that.
+// Zero dependencies.
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -42,21 +44,30 @@ function ensureApproveScript() {
 }
 
 // PermissionRequest (all tools) and PreToolUse on AskUserQuestion, both with Claude Code's full 600 s timeout,
-// so the hook can wait for the phone. Idempotent; stale entries pointing elsewhere are dropped.
-function installApprovalHooks() {
+// so the hook can wait for the bubble or the phone. Idempotent; stale entries pointing elsewhere are dropped.
+// `backup: false` when the caller (setup) already saved the untouched settings.json. The backup is written only when
+// none exists, so it keeps the settings from before Nudge touched them. Returns how many were added.
+function installApprovalHooks({ backup = true } = {}) {
+  ensureApproveScript();
   const settings = readSettings();
-  if (fs.existsSync(SETTINGS)) fs.copyFileSync(SETTINGS, SETTINGS + '.bak-claude-nudge');
+  const bak = SETTINGS + '.bak-claude-nudge';
+  if (backup && fs.existsSync(SETTINGS) && !fs.existsSync(bak)) fs.copyFileSync(SETTINGS, bak);
   settings.hooks = settings.hooks || {};
   const command = `"${process.execPath}" "${APPROVE}"`;
   const entry = { type: 'command', command, timeout: 600 };
+  let added = 0;
   for (const [event, matcher] of [['PermissionRequest', null], ['PreToolUse', 'AskUserQuestion']]) {
     const list = (settings.hooks[event] = settings.hooks[event] || []);
     for (const g of list) if (g.hooks) g.hooks = g.hooks.filter((h) => !APPROVE_RE.test(h.command || '') || h.command === command);
-    if (!list.some((g) => (g.hooks || []).some((h) => h.command === command))) {
-      list.push({ ...(matcher ? { matcher } : {}), hooks: [entry] });
+    // Groups emptied by dropping a stale entry would otherwise linger as {hooks: []}.
+    settings.hooks[event] = list.filter((g) => !g.hooks || g.hooks.length);
+    if (!settings.hooks[event].some((g) => (g.hooks || []).some((h) => h.command === command))) {
+      settings.hooks[event].push({ ...(matcher ? { matcher } : {}), hooks: [entry] });
+      added++;
     }
   }
   writeSettings(settings);
+  return added;
 }
 
 function removeApprovalHooks() {
@@ -97,9 +108,10 @@ async function start(relayUrl) {
   if (!res.ok) throw new Error(body.error || `${relay} answered HTTP ${res.status}`);
   fs.mkdirSync(INSTALL_DIR, { recursive: true });
   fs.writeFileSync(LAST_RELAY, (body.relay || relay) + '\n');
-  fs.writeFileSync(CLOUD, JSON.stringify({ relay: body.relay || relay, userId: body.userId, laptopToken: body.laptopToken, pairedAt: new Date().toISOString() }, null, 2) + '\n', { mode: 0o600 });
-  ensureApproveScript();
-  installApprovalHooks();
+  // browserToken: what the relay uses to mirror the bubble's decisions to the hosted relay (POST /decisions).
+  // Hosted relays from before it existed send none; server.js then derives it from the laptop token.
+  fs.writeFileSync(CLOUD, JSON.stringify({ relay: body.relay || relay, userId: body.userId, laptopToken: body.laptopToken, ...(body.browserToken ? { browserToken: body.browserToken } : {}), pairedAt: new Date().toISOString() }, null, 2) + '\n', { mode: 0o600 });
+  installApprovalHooks(); // already there since `setup` installs them; kept for installs that predate that
   const out = { userId: body.userId, pairCode: body.pairCode, relay: body.relay || relay, expiresInSeconds: body.expiresInSeconds || 600 };
   out.link = pairLink(out.pairCode, out.relay);
   return out;
@@ -107,8 +119,14 @@ async function start(relayUrl) {
 
 function stop() {
   const was = read();
+  // Tell the hosted relay to forget the phones and their push tokens. Fire-and-forget: unpairing never waits on it.
+  if (was && typeof fetch === 'function') {
+    fetch(`${was.relay}/revoke`, { method: 'POST', headers: { Authorization: `Bearer ${was.laptopToken}` }, signal: AbortSignal.timeout(5000) })
+      .catch(() => {});
+  }
   if (fs.existsSync(CLOUD)) fs.unlinkSync(CLOUD);
-  removeApprovalHooks();
+  // The approval hooks stay: they also serve the bubble, and with no phone and no extension connected they
+  // return at once (the relay answers canDecide: false). `npx nudge-mascot uninstall` removes them.
   return { ok: true, wasPaired: !!was };
 }
 

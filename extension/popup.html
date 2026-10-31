@@ -33,10 +33,42 @@
   .qr svg { display: block; width: 100%; height: auto; image-rendering: pixelated; }
   .paircode { text-align: center; font-size: 12px; margin-top: 10px; }
   .paircode code { font-size: 13px; font-weight: 600; letter-spacing: .04em; }
+  /* Waiting stats: the landing page's card (2px ink border, hard shadow). */
+  .week { margin: 2px 0 12px; padding: 10px 12px 10px; border: 2px solid #1f1d1a; border-radius: 12px; box-shadow: 3px 3px 0 #1f1d1a; background: #fffdf9; }
+  .week .eyebrow { font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: #7a6a5a; }
+  .week .headline { font-size: 14px; line-height: 1.35; margin: 4px 0 2px; }
+  .week .headline b { font-weight: 800; background: linear-gradient(transparent 58%, #FFC53D 58%); padding: 0 1px; }
+  .week .compare { font-size: 11.5px; color: #7a6a5a; }
+  .week ol { list-style: none; margin: 8px 0 0; padding: 0; }
+  .week li { display: flex; gap: 8px; font-size: 12px; padding: 3px 0; border-top: 1px solid #efe7dc; }
+  .week li span { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .week li b { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .week .actions { margin-top: 8px; align-items: center; }
+  .week .help { margin-top: 6px; }
+  /* Connect: shown when the relay wants its code (401, or a locked socket). */
+  .connect { margin: 2px 0 12px; padding: 10px 12px; border: 2px solid #1f1d1a; border-radius: 12px; background: #fff3d6; }
+  .connect .help { margin: 0 0 6px; color: #5a4a3a; }
+  .connect .actions { margin-top: 0; }
+  .connect input { flex: 1; min-width: 0; font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; padding: 4px 6px; border: 1.5px solid #1f1d1a; border-radius: 6px; }
 </style>
 </head>
 <body>
   <h1>Nudge <span class="status" id="status"><i></i><span>checking…</span></span></h1>
+
+  <div class="connect" id="connectBox" hidden>
+    <div class="help"><b>Connect Nudge to its relay.</b> Run <code>npx nudge-mascot status</code> and paste the code. It keeps other programs on this computer from reading or answering Claude.</div>
+    <div class="actions"><input type="text" id="secretInput" placeholder="connection code" autocomplete="off" spellcheck="false" aria-label="Connection code"><button class="primary" id="connectBtn">Connect</button></div>
+    <div class="help" id="connectHint" style="margin:4px 0 0"></div>
+  </div>
+
+  <div class="week" id="week">
+    <div class="eyebrow">This week</div>
+    <div class="headline" id="weekHeadline">Checking…</div>
+    <div class="compare" id="weekCompare"></div>
+    <ol id="weekProjects"></ol>
+    <div class="actions"><button id="shareStats" disabled>Share as image</button><span class="help" id="shareHint" style="margin:0"></span></div>
+    <div class="help">Counted on this computer only: from a question or permission until you answer (terminal, bubble or phone) or dismiss it. Never uploaded.</div>
+  </div>
 
   <div class="row"><label>Nudge when Claude is done <input type="checkbox" id="showDone"></label></div>
   <div class="row"><label>Nudge on questions <input type="checkbox" id="showQuestion"></label></div>
@@ -57,6 +89,7 @@
 
   <h2 class="section">Phone</h2>
   <div class="row"><span id="phoneState">Checking…</span><button id="pairStart" hidden>Pair a phone</button><button id="unpair" hidden>Unpair</button></div>
+  <div class="help" style="margin:2px 0 4px">Optional. The bubble answers Claude without a phone; pairing adds answers from your phone.</div>
   <div class="row" id="relayRow"><label>Relay URL <input type="text" id="relayUrl" placeholder="https://relay.nudgemascot.com" style="width:150px"></label></div>
   <div id="pairBox" hidden>
     <div class="qr" id="qr"></div>
@@ -72,6 +105,8 @@
     <button class="test" data-kind="approve" title="A permission request you can Allow or Deny in the bubble or on the phone">Permission</button>
     <button class="test" data-kind="done">Done</button>
     <button class="test" data-kind="approve" data-phone-delay="5" title="Lock the phone within 5 seconds; the notification arrives with Allow / Deny">Lock screen (5 s)</button>
+    <button class="test" data-kind="jump" title="A nudge whose Jump to terminal button switches to Terminal (from the CLI: the terminal you ran it in)">Jump back</button>
+    <button class="test" data-kind="multi" title="Three sessions waiting at once: tap the pills to switch between them">3 sessions</button>
   </div>
   <div class="help" id="testHint" style="margin-top:4px"></div>
 

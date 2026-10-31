@@ -11,6 +11,9 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const pairing = require('./pairing');
+const focus = require('./focus'); // Jump back: which terminal each session runs in, and how to bring it forward
+const stats = require('./stats'); // Waiting stats: ~/.claude-nudge/stats.jsonl
+const secret = require('./secret'); // The per-install secret every client but /health must send
 const { adapterFor, createContext, sessionKey, incompleteDecision: incomplete, DEFAULT_AGENT } = require('./adapters');
 
 const HOST = '127.0.0.1';
@@ -361,9 +364,10 @@ function safeWrite(socket, buf) {
   try {
     if (!socket.destroyed) socket.write(buf);
   } catch (_) {
-    sockets.delete(socket);
+    dropSocket(socket);
   }
 }
+const dropSocket = (socket) => { sockets.delete(socket); lockedSockets.delete(socket); };
 
 // Parses complete client frames from socket._buf; returns when more data is needed.
 function handleFrames(socket) {
@@ -393,7 +397,7 @@ function handleFrames(socket) {
     if (opcode === 0x8) { // close
       safeWrite(socket, encodeFrame(payload, 0x8));
       socket.end();
-      sockets.delete(socket);
+      dropSocket(socket);
       return;
     }
     if (opcode === 0x9) { // ping -> pong
@@ -406,6 +410,7 @@ function handleFrames(socket) {
   }
 }
 
+// A second layer under the secret: web pages (http(s):// origins) are refused before anything else.
 function isTrustedOrigin(req) {
   // The extension sends chrome-extension://... ; curl sends none. Any web page would send http(s)://...
   const origin = req.headers.origin;
@@ -424,9 +429,15 @@ const server = http.createServer((req, res) => {
   if (req.method === 'GET' && url.pathname === '/health') {
     return json(200, { ok: true, clients: sockets.size, events: recent.length, port: PORT, cloud: !!cloud() });
   }
+  // Everything below needs the secret. The extension without it may still see that events happen (redacted), so the
+  // popup can say what is missing.
+  const authed = authorized(req.headers[secret.HEADER]);
   if (req.method === 'GET' && url.pathname === '/events') {
-    return json(200, { events: recent });
+    if (authed) return json(200, { events: recent });
+    if (fromExtension(req)) return json(200, { events: recent.map(redact), locked: true });
+    return json(401, UNAUTHORIZED);
   }
+  if (!authed) return json(401, UNAUTHORIZED);
   if (req.method === 'POST' && (url.pathname === '/hook' || url.pathname === '/test')) {
     let body = '';
     req.setEncoding('utf8');
@@ -508,15 +519,45 @@ const server = http.createServer((req, res) => {
       recordDecision(decision);
       const c = cloud();
       if (c && typeof fetch === 'function') {
+        // cloud.json's browserToken (hosted relays hand it out with the pair code); derived from the laptop token for
+        // cloud.json files written before that.
+        const token = c.browserToken || c.laptopToken.replace(/^([a-z2-7]+)\.l/, '$1.b');
         fetch(`${c.relay}/decisions`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${c.laptopToken.replace(/^([a-z2-7]+)\.l/, '$1.b')}` },
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify(decision),
           signal: AbortSignal.timeout(5000),
         }).catch(() => {});
       }
       return json(200, { ok: true });
     });
+    return;
+  }
+  // Jump back: bring the terminal running this session to the front. 404 when its terminal is unknown,
+  // 501 when this platform (or Linux without wmctrl/xdotool) can't do it.
+  if (req.method === 'POST' && url.pathname === '/focus') {
+    readJson(req, 1e4, (d) => {
+      if (!d || !d.session_id) return json(400, { error: 'session_id required' });
+      focus.focus(sessionKey(d.agent && String(d.agent), String(d.session_id))).then((r) => {
+        log(`focus ${d.session_id}: ${r.status}${r.body.app ? ` (${r.body.app})` : ''}${r.body.error ? ` ${r.body.error}` : ''}`);
+        json(r.status, r.body);
+      });
+    }, () => json(400, { error: 'invalid json' }));
+    return;
+  }
+  // The user dismissed a waiting nudge (Got it, Esc, the mascot): closes its wait in the stats.
+  if (req.method === 'POST' && url.pathname === '/dismissed') {
+    readJson(req, 1e4, (d) => {
+      if (!d || !d.session_id) return json(400, { error: 'session_id required' });
+      const row = stats.finish(sessionKey(d.agent && String(d.agent), String(d.session_id)), 'dismissed', { eventId: Number(d.id) || undefined });
+      json(200, { ok: true, closed: !!row });
+    }, () => json(400, { error: 'invalid json' }));
+    return;
+  }
+  // Waiting stats for the popup's "This week" card. Read from the local file only.
+  if (req.method === 'GET' && url.pathname === '/stats') {
+    stats.summary(url.searchParams.get('range') || 'week')
+      .then((s) => json(200, s), (e) => json(500, { error: e.message }));
     return;
   }
   // Phone pairing, driven from the extension popup. The relay owns cloud.json and the approval hooks.
@@ -545,10 +586,31 @@ const server = http.createServer((req, res) => {
   json(404, { error: 'not found' });
 });
 
+// Reads a small JSON body; `bad` on invalid JSON.
+function readJson(req, max, ok, bad) {
+  let body = '';
+  req.setEncoding('utf8');
+  req.on('data', (c) => { body += c; if (body.length > max) req.destroy(); });
+  req.on('end', () => {
+    let d;
+    try { d = JSON.parse(body || '{}'); } catch (_) { return bad(); }
+    ok(d);
+  });
+}
+
+// The extension's socket: ws://127.0.0.1:PORT/ws?secret=… . Without the secret, an extension still gets a socket, but
+// only a hello with `locked: true` (the popup then asks for the code) and never an event; anything else gets a 401.
 server.on('upgrade', (req, socket) => {
   const key = req.headers['sec-websocket-key'];
-  if (req.url !== '/ws' || !key || !isTrustedOrigin(req)) {
+  const url = new URL(req.url, `http://${HOST}:${PORT}`);
+  if (url.pathname !== '/ws' || !key || !isTrustedOrigin(req)) {
     socket.write('HTTP/1.1 400 Bad Request\r\n\r\n');
+    socket.destroy();
+    return;
+  }
+  const authed = authorized(url.searchParams.get('secret') || req.headers[secret.HEADER]);
+  if (!authed && !fromExtension(req)) {
+    socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
     socket.destroy();
     return;
   }
@@ -561,20 +623,32 @@ server.on('upgrade', (req, socket) => {
   );
   socket._buf = Buffer.alloc(0);
   socket.setNoDelay(true);
-  sockets.add(socket);
+  (authed ? sockets : lockedSockets).add(socket);
   socket.on('data', (chunk) => {
     socket._buf = Buffer.concat([socket._buf, chunk]);
     handleFrames(socket);
   });
-  socket.on('close', () => sockets.delete(socket));
-  socket.on('error', () => sockets.delete(socket));
-  safeWrite(socket, encodeFrame(JSON.stringify({ type: 'hello', recent: recent.slice(-5) })));
+  socket.on('close', () => dropSocket(socket));
+  socket.on('error', () => dropSocket(socket));
+  if (!authed) {
+    safeWrite(socket, encodeFrame(JSON.stringify({ type: 'hello', locked: true, recent: [] })));
+    log('extension connected without the secret: locked until the code is pasted into its popup');
+    return;
+  }
+  // `ended` and `decided` let a reconnecting extension drop nudges answered while it was away (in the terminal, the
+  // bubble of another profile, or the phone), even when their events have left `recent`.
+  safeWrite(socket, encodeFrame(JSON.stringify({
+    type: 'hello',
+    recent: recent.slice(-5),
+    ended: [...ended].map(([k, v]) => ({ key: k, ...v })),
+    decided: [...decisions.keys()],
+  })));
   log(`extension connected (${sockets.size} client(s))`);
 });
 
 setInterval(() => {
   const frame = encodeFrame(JSON.stringify({ type: 'ping', ts: Date.now() }));
-  for (const s of sockets) safeWrite(s, frame);
+  for (const s of [...sockets, ...lockedSockets]) safeWrite(s, frame);
 }, PING_INTERVAL_MS).unref();
 
 function log(msg) {

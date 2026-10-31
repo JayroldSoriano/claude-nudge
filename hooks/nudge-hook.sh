@@ -8,6 +8,9 @@
 # X-Nudge-Secret is the per-install secret `setup` minted; the relay refuses hooks without it. Read with the shell's
 # own `read` (no extra process); it returns non-zero at a missing final newline, hence the `|| true`.
 PORT="${CLAUDE_NUDGE_PORT:-47831}"
+SECRET=""
+SECRET_FILE="${HOME:-}/.claude-nudge/secret"
+if [ -r "$SECRET_FILE" ]; then IFS= read -r SECRET < "$SECRET_FILE" || true; fi
 QUERY=""
 case "${1:-}" in
   "" | *[!a-z0-9-]*) ;;
@@ -15,6 +18,13 @@ case "${1:-}" in
 esac
 curl -s -m 2 -X POST \
   -H 'Content-Type: application/json' \
+  -H "X-Nudge-Secret: ${SECRET}" \
+  -H "X-Nudge-Terminal: ${TERM_PROGRAM:-}" \
+  -H "X-Nudge-Terminal-Session: ${ITERM_SESSION_ID:-${TERM_SESSION_ID:-}}" \
+  -H "X-Nudge-Terminal-Bundle: ${__CFBundleIdentifier:-}" \
+  -H "X-Nudge-Tmux: ${TMUX:-}" \
+  -H "X-Nudge-Tmux-Pane: ${TMUX_PANE:-}" \
+  -H "X-Nudge-Window: ${WINDOWID:-}" \
   --data-binary @- \
   "http://127.0.0.1:${PORT}/hook${QUERY}" >/dev/null 2>&1 || true
 exit 0

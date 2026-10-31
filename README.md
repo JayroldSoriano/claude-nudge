@@ -11,6 +11,8 @@
   <a href="#install">Install</a> ·
   <a href="#escalation">Escalation</a> ·
   <a href="#reply-from-the-bubble">Reply</a> ·
+  <a href="#jump-back">Jump back</a> ·
+  <a href="#waiting-stats">Stats</a> ·
   <a href="https://nudge-mascot.vercel.app/privacy">Privacy</a> ·
   <a href="https://github.com/sponsors/JayroldSoriano">Sponsor</a>
 </p>
@@ -30,19 +32,25 @@ Claude Code hook ──curl──▶ relay on 127.0.0.1 ──WebSocket──▶
 npx nudge-mascot setup
 ```
 
-That copies the relay and hook into `~/.claude-nudge/`, adds the hooks to `~/.claude/settings.json`
-(backup saved next to it), starts the relay and keeps it running at login (launchd on macOS,
-systemd user service on Linux), and prints where to load the extension.
+That copies the relay and hooks into `~/.claude-nudge/`, adds the hooks to `~/.claude/settings.json`
+(backup saved next to it; Codex and Gemini CLI too when found, see [Other agents](#other-agents)), including
+the two approval hooks that let you [reply from the bubble](#reply-from-the-bubble), starts the relay and keeps
+it running at login (launchd on macOS, systemd user service on Linux), and prints where to load the extension
+and a **connection code** (see [Privacy](#privacy)). Running it again is safe: hooks already present are left
+alone, the backup keeps your settings from before the first run, and the code stays the same.
 
 Then load the extension: open `chrome://extensions`, turn on **Developer mode**, click **Load unpacked**,
-and pick `~/.claude-nudge/extension` (Chrome Web Store listing coming). Restart any running Claude Code
-session and run:
+and pick `~/.claude-nudge/extension` (Chrome Web Store listing coming). Click the Nudge toolbar icon, and paste
+the connection code into **Connect** (the welcome page that opens on install has the same field;
+`npx nudge-mascot status` prints the code again). Restart any running Claude Code session and run:
 
 ```sh
 npx nudge-mascot test            # a question
-npx nudge-mascot test done       # done / permission / resolved
-npx nudge-mascot status          # relay health + hook check
-npx nudge-mascot uninstall       # removes everything it installed
+npx nudge-mascot test done       # done / permission / approve / questions / resolved
+npx nudge-mascot test jump       # a nudge whose "Jump to terminal" switches back to this terminal
+npx nudge-mascot test multi      # three sessions waiting at once (the session switcher)
+npx nudge-mascot status          # relay health, hook check (approval hooks included), the connection code
+npx nudge-mascot uninstall       # removes everything it installed, approval hooks and stats included
 ```
 
 Requires Node 18+ and Chrome 116+.
@@ -122,6 +130,16 @@ session never replaces a blocking question; it becomes a system notification.
 Nudge never blocks the page: only the bubble and the mascot catch clicks. Sound needs you to have
 interacted with the page since it loaded (Chrome's autoplay policy); the visual tiers don't depend on it.
 
+## Multi-session view
+
+Run several Claude Code sessions and more than one can be blocked at once. Each session keeps its own nudge
+with its own escalation clock, snooze and dismiss. When two or more are waiting, the bubble gets a row of
+pills above the message: project name, a dot for the kind (gold question, amber permission) and how long
+Claude has waited there. Tap a pill to see that session's nudge and answer it; the pill turns red once that
+session reaches level 2. The mascot's level follows the most urgent session, so switching pills never calms
+it down. Answering, dismissing or snoozing one session's nudge brings up the next; with a single session there
+are no pills. Preview: `npx nudge-mascot test multi`, or **3 sessions** in the popup.
+
 ## Reply from the bubble
 
 `npx nudge-mascot setup` installs the approval hooks (`PermissionRequest`, and `PreToolUse` on
@@ -142,18 +160,62 @@ connected or a phone is paired. With Chrome closed (or the extension off, or the
 it returns at once and the terminal prompt appears immediately, exactly as without Nudge. `npx nudge-mascot
 unpair` keeps the approval hooks for the bubble; `uninstall` removes them.
 
+## Jump back
+
+Every nudge has a **Jump to terminal** button that brings the app running that Claude Code session to the
+front. The hooks read where they run from the environment Claude Code passes them (no extra processes, so
+they stay instant): `TERM_PROGRAM`, `ITERM_SESSION_ID` / `TERM_SESSION_ID`, macOS's `__CFBundleIdentifier`
+(tells VS Code from Cursor and other forks), `TMUX` / `TMUX_PANE` and X11's `WINDOWID`. The relay keeps the
+latest per session in memory.
+
+- **macOS**: `osascript -e 'tell application id "…" to activate'`, falling back to `open -b`. iTerm2 also
+  selects the exact window, tab and split by its session id. Terminal, VS Code, Cursor, Warp, Ghostty,
+  WezTerm, kitty, Hyper, Tabby and Zed are known by name; anything else is activated by the app that
+  launched the shell, or by `TERM_PROGRAM`. Inside tmux, Nudge also switches tmux to the session's pane.
+  The first jump may ask you to let Node control the app (System Settings > Privacy & Security >
+  Automation); activating still works without it.
+- **Linux**: `wmctrl` or `xdotool`, by window id when the terminal exports `WINDOWID`, else by window class.
+  Without either tool the bubble says to install one.
+- A session whose terminal Nudge can't tell (started before you updated, or in a bare tmux with no app
+  around it) gets a message in the bubble instead.
+
+For a "done" nudge the bubble goes away once you jump; a question or permission stays until you answer it.
+Restart running Claude Code sessions after updating so their hooks report the terminal. Preview:
+`npx nudge-mascot test jump` (switches back to the terminal you ran it in), `test jump-unknown`, or
+**Jump back** in the popup (uses Terminal unless a CLI test told it otherwise).
+
+## Waiting stats
+
+The relay times every question and permission from the moment it's shown until it's answered in the terminal,
+the bubble or the phone, or dismissed, and appends one line per wait to `~/.claude-nudge/stats.jsonl`
+(start, end, kind, project, agent, how it was answered; rotated to `stats.1.jsonl` at 5 MB). Test and preview
+nudges don't count. The popup's **This week** card reads it: "Claude waited on you 47 min across 23 nudges",
+the three projects that kept it waiting longest, and the change from the week before. **Share as image**
+draws a 1200×630 PNG (the mascot, the number, the week's dates) in the popup and saves it to Downloads;
+project names stay off it. Stats never leave your machine.
+
 ## Settings (extension popup)
 
 Which event kinds to show, sound on/off, auto-dismiss seconds, corner position, relay port,
-escalation mode, level timings, level-3 sound, snooze length. Change the port with
+escalation mode, level timings, level-3 sound, snooze length, and **Connect** (shown when the relay asks for
+the connection code). Change the port with
 `CLAUDE_NUDGE_PORT=...` before `setup` and match it in the popup.
 
 ## Privacy
 
-Everything stays on your machine. The relay binds to `127.0.0.1` and only accepts WebSocket or
-`/events` requests from `chrome-extension://` origins (or none, as curl sends), so web pages cannot
-read your Claude messages. The content script renders inside a closed shadow root and never reads
-the page. Messages are clipped to 1200 characters before leaving the relay. No accounts, no analytics.
+Everything stays on your machine. The relay binds to `127.0.0.1`, which every program and every user account on
+the computer can reach, so it also wants a per-install secret: `setup` writes 32 random bytes to
+`~/.claude-nudge/secret` (mode 0600, readable by you alone) and prints it as the connection code. The hooks and
+the CLI read it from that file; the extension keeps the copy you paste in `chrome.storage.local` (this browser
+profile only, not synced) and sends it as an `X-Nudge-Secret` header (on the WebSocket, as `?secret=`). Every
+endpoint but `/health` requires it: without it the relay answers 401, so nothing else can read your Claude
+messages, answer a permission, fake a nudge or switch apps through Jump back. An extension without the code
+only learns that it needs one (a locked socket, and `/events` with the messages replaced by "(connect to see)").
+The relay re-reads the file when a request fails, so a new code works without a restart; delete the file and
+re-run `setup` to change it. Requests from web pages (`http(s)://` origins) are refused before that check. The
+content script renders inside a closed shadow root and never reads the page. Messages are clipped to 1200 characters before leaving the relay. Waiting stats and the terminal
+each session runs in stay on your machine (the stats in `~/.claude-nudge/stats.jsonl`, the terminal in the
+relay's memory). No accounts, no analytics.
 Full policy: [privacy.html](https://nudge-mascot.vercel.app/privacy).
 
 ## Project layout
@@ -161,9 +223,15 @@ Full policy: [privacy.html](https://nudge-mascot.vercel.app/privacy).
 | Path | What it is |
 | --- | --- |
 | `bin/nudge.js` | The CLI: `setup`, `start`, `status`, `test`, `uninstall`. |
-| `hooks/nudge-hook.sh` | Claude Code hook. Forwards the hook's JSON to the relay with curl. Fire-and-forget, 2s timeout, never blocks Claude. |
-| `relay/server.js` | Zero-dependency Node relay with its own minimal WebSocket server. Normalizes `Stop`, `Notification`, `AskUserQuestion`, `PostToolUse`, `UserPromptSubmit`. |
-| `extension/` | Chrome extension (Manifest V3): service worker holds the WebSocket and the escalation clock; content script draws the mascot in a closed shadow root; popup has settings. |
+| `hooks/nudge-hook.sh` | The hook every agent runs. Forwards the hook's JSON to the relay with curl (optional first argument: the agent, sent as `?agent=`), plus the terminal it runs in as `X-Nudge-*` headers. Fire-and-forget, 2s timeout, never blocks the agent. |
+| `relay/server.js` | Zero-dependency Node relay with its own minimal WebSocket server. Picks the agent's adapter (`?agent=` on `/hook` and `/test`); holds decisions from the bubble or the phone for the approval hook. Endpoints for the extension: `/decision`, `/focus`, `/dismissed`, `/stats`, `/test`, `/pair/*`. |
+| `relay/adapters/` | One adapter per agent (`claude-code.js`, `codex.js`, `gemini.js`) mapping its hook payloads to the shared event; `index.js` holds the shared state and helpers; `test.js` is `npm test`. |
+| `relay/focus.js` | Jump back: the terminal each session runs in, and the `osascript` / `open` / `wmctrl` / `xdotool` call that brings it forward. |
+| `relay/stats.js` | Waiting stats: opens and closes waits, appends `stats.jsonl`, sums a week for `GET /stats`. |
+| `relay/pairing.js` | Phone pairing (`cloud.json`) and the approval hooks in `settings.json`, shared by the relay and the CLI. |
+| `relay/secret.js` | The per-install secret (`~/.claude-nudge/secret`) every client sends; minted by `setup`. |
+| `hooks/nudge-approve.js` | Approval hook (installed by `setup`). Waits on the relay for Allow / Deny or the chosen answers and hands them to Claude Code; returns at once when nothing can answer. |
+| `extension/` | Chrome extension (Manifest V3): service worker holds the WebSocket and one nudge per session (keyed by agent and session) with its escalation clock; content script draws the mascot, the bubble (with an agent badge for Codex / Gemini) and the session pills in a closed shadow root; popup has Connect (the code), settings, the week's stats and the share image. |
 | `docs/` | Landing page and privacy policy (GitHub Pages). |
 | `scripts/make-assets.js` | Renders the demo GIF/MP4, Web Store screenshots, and promo tile with headless Chrome and ffmpeg. |
 | `scripts/pack-extension.sh` | Zips the extension for Web Store upload into `dist/`. |
@@ -173,20 +241,19 @@ Full policy: [privacy.html](https://nudge-mascot.vercel.app/privacy).
 ```sh
 git clone https://github.com/JayroldSoriano/nudge-mascot && cd nudge-mascot
 node bin/nudge.js setup            # same as npx, from the checkout
+npm test                           # agent adapter tests (no dependencies)
 npm run icons                      # regenerate extension/icons
 npm run assets                     # demo.gif, mp4s, store screenshots (needs Chrome + ffmpeg)
 npm run pack                       # dist/nudge-<version>.zip
-curl -s http://127.0.0.1:47831/health
+curl -s http://127.0.0.1:47831/health                                                # no code needed
+curl -s -H "X-Nudge-Secret: $(cat ~/.claude-nudge/secret)" http://127.0.0.1:47831/events  # everything else
 ```
 
 After editing the extension, click its **Reload** icon on `chrome://extensions`; a page reload is not enough.
 
 ## Roadmap
 
-- Reply to `AskUserQuestion` and approve permissions from the bubble.
-- "Jump back" button that focuses the terminal app.
-- Multi-session view when several Claude Code sessions run at once.
-- Mascot and sound packs. Waiting stats.
+- Mascot and sound packs.
 - Desktop apps reusing the same relay protocol. Firefox port.
 
 ## License
