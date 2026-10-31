@@ -13,7 +13,7 @@
 </head>
 <body>
 <h1>Privacy Policy</h1>
-<p><strong>Nudge</strong> (the Chrome extension and its local relay). Last updated 2026-10-30.</p>
+<p><strong>Nudge</strong> (the Chrome extension and its local relay). Last updated 2026-10-31.</p>
 
 <h2>Summary</h2>
 <p>Everything stays on your computer. The extension has no accounts, no analytics, no remote servers, and sends nothing over the internet.</p>
@@ -45,6 +45,23 @@
 
 <h2>Network</h2>
 <p>The only network connection is to <code>127.0.0.1</code> on your own machine. The relay rejects connections from web pages and accepts only the extension or local command-line tools.</p>
+<p>The local relay listens only on <code>127.0.0.1</code>. Because any program or user account on the computer can reach that address, Nudge also uses a per-install secret: setup writes 32 random bytes to <code>~/.claude-nudge/secret</code>, readable only by your account, and shows it as a connection code. The hooks read it from that file; the extension stores the copy you paste in its local storage on this browser profile (not synced) and sends it with every request. Without it the relay refuses everything except a health check, so no other program can read your Claude messages, answer a permission prompt, or switch apps on your behalf. The code never leaves your computer.</p>
+
+<h2>If you pair a phone (Nudge Cloud)</h2>
+<p>Pairing is opt-in. None of this happens unless you click "Pair a phone" in the extension or run <code>npx nudge-mascot pair</code>. The free, browser-only mode is unchanged: nothing leaves your machine.</p>
+<p>Once you pair, the local relay also sends each nudge to the Nudge hosted relay, which runs on Cloudflare, and the hosted relay passes it to your phone.</p>
+<p>What the hosted relay stores:</p>
+<ul>
+  <li>The last 50 events, each for up to 7 days: the kind of event, its title, the message text clipped to 1,200 characters, and your project folder name (not the full path). For a permission request, also the tool name and the command or file it wants to use. For a question, also the question and its answer choices.</li>
+  <li>The decisions you make on those events (Allow, Deny, or the answer you picked), for up to 7 days.</li>
+  <li>Hashed (SHA-256) versions of the laptop and phone tokens, never the tokens themselves.</li>
+  <li>The Expo push token of each phone and its platform.</li>
+  <li>Nothing else about who you are: no account, email address, or phone number. The relay does not keep your IP address. Cloudflare sees it to deliver requests, and a counter tied to it, used to limit pairing attempts, is erased after 10 minutes.</li>
+</ul>
+<p>Decisions you make on the phone are forwarded to your laptop, where Claude Code applies them.</p>
+<p>Push notifications go through Expo's push service, which hands them to Apple (iPhone) or Google (Android). A push carries the notification text: the title, the project folder name, and the start of the message. Expo, Apple, and Google handle that text to deliver it.</p>
+<p>Retention: events and decisions are deleted after 7 days, or sooner once 50 newer events have replaced them. An unused pair code is deleted after 10 minutes.</p>
+<p>To delete everything: click Unpair in the extension (or run <code>npx nudge-mascot unpair</code>). That revokes every paired phone and deletes their push tokens from the hosted relay. "Clear all recent nudges" in the app deletes the event list right away; otherwise events expire after 7 days.</p>
 
 <h2>Third parties</h2>
 <p>None. The extension does not use third-party services, SDKs, or trackers. Claude Code is a product of Anthropic; this extension is an independent project and is not affiliated with or endorsed by Anthropic.</p>
