@@ -30,6 +30,9 @@
   button:focus-visible, a:focus-visible { outline: 3px solid #1a73e8; outline-offset: 2px; }
   a { color: #9a5a12; }
   footer { margin-top: 32px; font-size: 13px; color: var(--muted); text-align: center; }
+  .paste { display: flex; gap: 10px; margin: 10px 0 8px; }
+  .paste input { flex: 1; min-width: 0; font: 14px/1.4 "SF Mono", Menlo, Consolas, monospace; padding: 8px 10px; border: 2px solid var(--ink); border-radius: 10px; background: #fff; }
+  .hint { font-size: 14px; font-weight: 600; min-height: 1.4em; }
 </style>
 </head>
 <body>
@@ -50,15 +53,25 @@
         <p class="muted">It adds the Claude Code hooks to <code>~/.claude/settings.json</code> (with a backup) and starts a tiny relay on 127.0.0.1 that keeps running at login. Needs Node 18 or newer. This page updates on its own when the relay is running.</p>
       </div>
     </li>
-    <li id="step-restart">
+    <li id="step-connect">
       <div class="n">2</div>
+      <div>
+        <h2>Paste the connection code</h2>
+        <p class="muted">Setup ends by printing a code (run <code>npx nudge-mascot status</code> to see it again). Paste it here or in the toolbar popup's <b>Connect</b>.</p>
+        <div class="paste"><input type="text" id="secret" placeholder="connection code" autocomplete="off" spellcheck="false" aria-label="Connection code"><button id="connect" type="button">Connect</button></div>
+        <p class="hint" id="connect-hint" role="status"></p>
+        <p class="muted">The relay listens on 127.0.0.1, which every program and user on this computer can reach. The code, stored only in <code>~/.claude-nudge/secret</code> (readable by you alone) and in this browser, is what lets Nudge read Claude's messages and answer for you, and keeps everything else out.</p>
+      </div>
+    </li>
+    <li id="step-restart">
+      <div class="n">3</div>
       <div>
         <h2>Restart Claude Code</h2>
         <p class="muted">Quit any running Claude Code session and start it again so it picks up the new hooks.</p>
       </div>
     </li>
     <li id="step-test">
-      <div class="n">3</div>
+      <div class="n">4</div>
       <div>
         <h2>Send a test nudge</h2>
         <div class="cmd"><code id="cmd-test">npx nudge-mascot test</code><button id="copy-test" type="button">Copy</button></div>
